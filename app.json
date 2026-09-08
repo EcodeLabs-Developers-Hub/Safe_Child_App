@@ -1,0 +1,43 @@
+{
+  "expo": {
+    "name": "Safe Child",
+    "slug": "safe-child-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#002045"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.educal.safechild",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Safe Child needs camera access to allow profile avatar and pickup photo verification uploads.",
+        "NSPhotoLibraryUsageDescription": "Safe Child needs access to photo library for profile avatar and pickup document uploads."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#002045"
+      },
+      "package": "com.educal.safechild",
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/logo.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7529e709-3d1c-4797-a308-cdcd1dec13d3"
+      }
+    }
+  }
+}
