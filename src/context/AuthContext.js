@@ -1,19 +1,20 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { onAuthStateChanged } from 'firebase/auth';
 import { 
   signInUser, 
   signUpUser, 
   signOutAuth, 
-  resetUserPassword 
+  resetUserPassword,
+  sendVerificationEmail
 } from '../services/authService';
 import { 
   getUserProfile, 
+  subscribeUserProfile,
   updateUserProfile, 
   pickProfileImage, 
   resetProfileImageToDefault 
 } from '../services/profileService';
-
-const CURRENT_USER_KEY = '@safe_child_current_session';
+import { auth } from '../config/firebase';
 
 export const AuthContext = createContext();
 
@@ -23,28 +24,43 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  // Initialize and check existing persistent session on app startup
   useEffect(() => {
-    const initializeAuthSession = async () => {
+    if (!auth) {
+      setLoading(false);
+      return undefined;
+    }
+    let unsubscribeProfile = () => {};
+    const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      unsubscribeProfile();
+      unsubscribeProfile = () => {};
+      setLoading(true);
       try {
-        setLoading(true);
-        const storedSessionJson = await AsyncStorage.getItem(CURRENT_USER_KEY);
-        if (storedSessionJson) {
-          const sessionData = JSON.parse(storedSessionJson);
-          if (sessionData && sessionData.uid) {
-            setUser({ uid: sessionData.uid, email: sessionData.email });
-            const profile = await getUserProfile(sessionData.uid);
-            setUserProfile(profile);
+        setUser(firebaseUser);
+        if (firebaseUser) {
+          const profile = await getUserProfile(firebaseUser.uid);
+          if (!profile) {
+            setAuthError(`No Firestore profile exists for Auth UID ${firebaseUser.uid}.`);
           }
+          setUserProfile(profile);
+          unsubscribeProfile = subscribeUserProfile(
+            firebaseUser.uid,
+            setUserProfile,
+            () => setAuthError('Unable to watch your account data.')
+          );
+        } else {
+          setUserProfile(null);
         }
       } catch (err) {
-        console.warn('Failed to restore session:', err);
+        setAuthError('Unable to load your account data.');
+        setUserProfile(null);
       } finally {
         setLoading(false);
       }
+    });
+    return () => {
+      unsubscribeProfile();
+      unsubscribeAuth();
     };
-
-    initializeAuthSession();
   }, []);
 
   // Login handler
@@ -52,6 +68,10 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
     try {
       const { user: authUser, profile } = await signInUser(email, password);
+      if (!profile) {
+        await signOutAuth();
+        throw new Error(`No Firestore profile exists for Auth UID ${authUser.uid}. Create users/${authUser.uid} with a role before using the app.`);
+      }
       setUser(authUser);
       setUserProfile(profile);
       return profile;
@@ -77,12 +97,14 @@ export const AuthProvider = ({ children }) => {
 
   // Logout handler
   const logout = async () => {
+    setLoading(true);
     try {
       await signOutAuth();
-    } finally {
       setUser(null);
       setUserProfile(null);
       setAuthError(null);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -132,6 +154,7 @@ export const AuthProvider = ({ children }) => {
         login,
         register,
         logout,
+        sendVerificationEmail,
         resetPassword: resetUserPassword,
         refreshProfile,
         editProfile,

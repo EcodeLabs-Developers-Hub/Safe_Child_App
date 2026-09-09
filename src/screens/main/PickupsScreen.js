@@ -22,18 +22,22 @@ import {
   updatePickupStatusRecord,
   subscribeAuthorizedContacts,
   addAuthorizedContactRecord,
-  subscribeStudents,
-  getConnectedChildren
+  subscribeStudentsForUser,
+  getConnectedChildren,
+  subscribePickupAudits,
+  addPickupAuditRecord,
+  addAlertRecord
 } from '../../services/dataService';
 
 export const PickupsScreen = ({ route }) => {
   const { userProfile } = useAuth();
-  const userRole = userProfile?.role || 'parent';
+  const userRole = userProfile?.role || null;
 
-  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'verifier' | 'whitelist'
+  const [activeTab, setActiveTab] = useState('requests'); // 'requests' | 'verifier' | 'audit_log' | 'whitelist'
   const [pickups, setPickups] = useState([]);
   const [authorizedContacts, setAuthorizedContacts] = useState([]);
   const [students, setStudents] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
 
   // New Request Modal State
   const [modalVisible, setModalVisible] = useState(false);
@@ -47,6 +51,7 @@ export const PickupsScreen = ({ route }) => {
   // Gate PIN Verifier Tool State
   const [searchPin, setSearchPin] = useState('');
   const [matchedRequest, setMatchedRequest] = useState(null);
+  const [verificationResult, setVerificationResult] = useState(null); // null | { status: 'SUCCESS'|'REJECTED', data, pin }
 
   // New Pre-Authorized Contact Modal
   const [contactModalVisible, setContactModalVisible] = useState(false);
@@ -54,24 +59,27 @@ export const PickupsScreen = ({ route }) => {
   const [contactRelation, setContactRelation] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactPhotoUri, setContactPhotoUri] = useState(null);
-
   // Live Firebase Subscriptions
   useEffect(() => {
     const unsubPickups = subscribePickups((liveList) => {
       setPickups(liveList);
-    });
+    }, userProfile);
     const unsubContacts = subscribeAuthorizedContacts((liveContacts) => {
       setAuthorizedContacts(liveContacts);
-    });
-    const unsubStudents = subscribeStudents((liveStudents) => {
+    }, userProfile);
+    const unsubStudents = subscribeStudentsForUser((liveStudents) => {
       setStudents(liveStudents);
-    });
+    }, userProfile);
+    const unsubAudits = subscribePickupAudits((liveAudits) => {
+      setAuditLogs(liveAudits);
+    }, userProfile);
     return () => {
       unsubPickups();
       unsubContacts();
       unsubStudents();
+      unsubAudits();
     };
-  }, []);
+  }, [userProfile]);
 
   // Handle incoming route params from child card shortcut
   useEffect(() => {
@@ -109,20 +117,18 @@ export const PickupsScreen = ({ route }) => {
 
     setLoading(true);
     try {
-      const newPin = Math.floor(1000 + Math.random() * 9000).toString();
       const newReqData = {
         studentName: studentName.trim(),
         pickupName: pickupName.trim(),
-        pickupPhone: pickupPhone.trim() || '+1 555-0000',
+        pickupPhone: pickupPhone.trim(),
         status: 'Pending',
         time: 'Today (Pending Approval)',
-        pinCode: newPin,
-        notes: notes.trim() || 'Standard pickup request.',
+        notes: notes.trim(),
         imageUri: proofImageUri,
         createdAt: new Date().toISOString()
       };
 
-      await addPickupRequestRecord(newReqData);
+      const savedRequest = await addPickupRequestRecord(newReqData);
       setModalVisible(false);
 
       // Reset form
@@ -132,7 +138,7 @@ export const PickupsScreen = ({ route }) => {
       setNotes('');
       setProofImageUri(null);
 
-      Alert.alert('Request Saved to Firebase', `Pickup authorization created! Verification PIN Code: ${newPin}`);
+      Alert.alert('Request Saved to Firebase', `Pickup authorization created. Verification PIN Code: ${savedRequest.pinCode}`);
     } catch (err) {
       Alert.alert('Error', err.message || 'Failed to save request to Firebase.');
     } finally {
@@ -150,7 +156,7 @@ export const PickupsScreen = ({ route }) => {
       const newContact = {
         name: contactName.trim(),
         relation: contactRelation.trim(),
-        phone: contactPhone.trim() || '+1 555-0100',
+        phone: contactPhone.trim(),
         status: 'Active',
         photoUri: contactPhotoUri
       };
@@ -168,29 +174,67 @@ export const PickupsScreen = ({ route }) => {
     }
   };
 
-  // Gate PIN Verification Lookup
-  const handlePinLookup = () => {
-    if (!searchPin.trim()) {
+  // Gate PIN Verification Lookup (Figure 4.14 Success & Rejection)
+  const handlePinLookup = async () => {
+    const cleanPin = searchPin.trim();
+    if (!cleanPin) {
       Alert.alert('Enter PIN', 'Please type the 4-digit verification PIN provided by recipient.');
       return;
     }
 
-    const found = pickups.find(p => p.pinCode === searchPin.trim());
-    if (found) {
+    const officerName = userProfile?.displayName || 'Gate Officer';
+    const found = pickups.find(p => p.pinCode === cleanPin);
+
+    if (found && (found.status === 'Approved' || found.status === 'Verified' || found.status === 'Pending')) {
       setMatchedRequest(found);
+      setVerificationResult({ status: 'SUCCESS', data: found });
+
+      await addPickupAuditRecord({
+        studentName: found.studentName,
+        pickupName: found.pickupName,
+        pickupPhone: found.pickupPhone,
+        pinCode: cleanPin,
+        status: 'VERIFIED_SUCCESS',
+        verifierName: officerName,
+        notes: 'Verification code matched active authorization. Recipient identity validated.'
+      });
     } else {
-      Alert.alert('Invalid PIN', 'No active pickup authorization matches the entered PIN code.');
       setMatchedRequest(null);
+      setVerificationResult({ status: 'REJECTED', pin: cleanPin });
+
+      await addPickupAuditRecord({
+        studentName: 'Unidentified Student',
+        pickupName: 'Unverified Claimer',
+        pickupPhone: 'Unknown',
+        pinCode: cleanPin,
+        status: 'REJECTED_INVALID_PIN',
+        verifierName: officerName,
+        notes: `Invalid or expired PIN (${cleanPin}) presented at campus gate. Handover halted.`
+      });
+
+      await addAlertRecord({
+        title: `Invalid Pickup PIN Attempt (${cleanPin})`,
+        description: `Unverified claimer presented invalid PIN code ${cleanPin} at main gate.`,
+        severity: 'High',
+        status: 'Unresolved',
+        time: 'Just now',
+        reporter: officerName,
+        impactedStudents: 'Gate Security Area'
+      });
     }
   };
 
   // Status transitions saved live to Firebase
   const updateStatus = async (id, newStatus) => {
-    await updatePickupStatusRecord(id, newStatus);
-    if (matchedRequest && matchedRequest.id === id) {
-      setMatchedRequest({ ...matchedRequest, status: newStatus });
+    try {
+      await updatePickupStatusRecord(id, newStatus);
+      if (matchedRequest && matchedRequest.id === id) {
+        setMatchedRequest({ ...matchedRequest, status: newStatus });
+      }
+      Alert.alert('Firebase Updated', `Pickup request marked as ${newStatus}.`);
+    } catch (err) {
+      Alert.alert('Unable to update request', err.message || 'Please check your connection and try again.');
     }
-    Alert.alert('Firebase Updated', `Pickup request marked as ${newStatus}.`);
   };
 
   const getStatusColor = (status) => {
@@ -227,24 +271,36 @@ export const PickupsScreen = ({ route }) => {
             style={[styles.tabBtn, activeTab === 'requests' && styles.tabBtnActive]}
             onPress={() => setActiveTab('requests')}
           >
-            <Ionicons name="list-outline" size={16} color={activeTab === 'requests' ? COLORS.white : COLORS.textSecondary} />
+            <Ionicons name="list-outline" size={15} color={activeTab === 'requests' ? COLORS.white : COLORS.textSecondary} />
             <Text style={[styles.tabText, activeTab === 'requests' && styles.tabTextActive]}>Active Requests</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={[styles.tabBtn, activeTab === 'verifier' && styles.tabBtnActive]}
-            onPress={() => setActiveTab('verifier')}
-          >
-            <Ionicons name="keypad-outline" size={16} color={activeTab === 'verifier' ? COLORS.white : COLORS.textSecondary} />
-            <Text style={[styles.tabText, activeTab === 'verifier' && styles.tabTextActive]}>Gate Verifier Portal</Text>
-          </TouchableOpacity>
+          {(userRole === 'admin' || userRole === 'pickup_verifier') && (
+            <>
+              <TouchableOpacity 
+                style={[styles.tabBtn, activeTab === 'verifier' && styles.tabBtnActive]}
+                onPress={() => setActiveTab('verifier')}
+              >
+                <Ionicons name="keypad-outline" size={15} color={activeTab === 'verifier' ? COLORS.white : COLORS.textSecondary} />
+                <Text style={[styles.tabText, activeTab === 'verifier' && styles.tabTextActive]}>Gate Verifier</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.tabBtn, activeTab === 'audit_log' && styles.tabBtnActive]}
+                onPress={() => setActiveTab('audit_log')}
+              >
+                <Ionicons name="time-outline" size={15} color={activeTab === 'audit_log' ? COLORS.white : COLORS.textSecondary} />
+                <Text style={[styles.tabText, activeTab === 'audit_log' && styles.tabTextActive]}>Audit Log</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           <TouchableOpacity 
             style={[styles.tabBtn, activeTab === 'whitelist' && styles.tabBtnActive]}
             onPress={() => setActiveTab('whitelist')}
           >
-            <Ionicons name="people-outline" size={16} color={activeTab === 'whitelist' ? COLORS.white : COLORS.textSecondary} />
-            <Text style={[styles.tabText, activeTab === 'whitelist' && styles.tabTextActive]}>Pre-Authorized</Text>
+            <Ionicons name="people-outline" size={15} color={activeTab === 'whitelist' ? COLORS.white : COLORS.textSecondary} />
+            <Text style={[styles.tabText, activeTab === 'whitelist' && styles.tabTextActive]}>Contacts</Text>
           </TouchableOpacity>
         </View>
 
@@ -332,14 +388,14 @@ export const PickupsScreen = ({ route }) => {
           </View>
         )}
 
-        {/* TAB 2: GATE VERIFIER PORTAL */}
+        {/* TAB 2: GATE VERIFIER PORTAL (Figure 4.14: Success & Rejected Verification) */}
         {activeTab === 'verifier' && (
           <View>
             <Card title="Campus Gate PIN Verification Portal" subtitle="Validate physical recipient PIN & photo proof">
               <InputField
                 label="Enter 4-Digit One-Time PIN"
                 value={searchPin}
-                onChangeText={setSearchPin}
+                onChangeText={(val) => { setSearchPin(val); setVerificationResult(null); }}
                 placeholder="e.g. 7482"
                 iconName="keypad-outline"
                 keyboardType="number-pad"
@@ -348,51 +404,124 @@ export const PickupsScreen = ({ route }) => {
               <Button
                 title="Verify PIN & Match Recipient"
                 onPress={handlePinLookup}
-                iconName="search-outline"
+                iconName="shield-checkmark-outline"
               />
             </Card>
 
-            {matchedRequest && (
-              <Card 
-                title="PIN Match Verified!" 
-                subtitle={`PIN: ${matchedRequest.pinCode}`}
-                headerRight={
-                  <View style={[styles.statusBadge, { backgroundColor: getStatusColor(matchedRequest.status) + '20' }]}>
-                    <Text style={[styles.statusBadgeText, { color: getStatusColor(matchedRequest.status) }]}>
-                      {matchedRequest.status.toUpperCase()}
-                    </Text>
+            {/* Figure 4.14: SUCCESS VALIDATION SCREEN */}
+            {verificationResult?.status === 'SUCCESS' && matchedRequest && (
+              <Card style={{ borderColor: COLORS.success, borderWidth: 2, backgroundColor: '#f0fdf4' }}>
+                <View style={styles.successHeaderRow}>
+                  <Ionicons name="checkmark-circle" size={44} color={COLORS.success} />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.successTitle}>VERIFICATION SUCCESSFUL</Text>
+                    <Text style={styles.successSub}>Authorized Handover Match Confirmed</Text>
                   </View>
-                }
-                style={{ borderColor: COLORS.success, borderWidth: 2 }}
-              >
-                <View style={styles.matchBox}>
-                  <Text style={styles.matchTitle}>{matchedRequest.studentName}</Text>
-                  <Text style={styles.matchSub}>Authorized Recipient: <Text style={styles.boldText}>{matchedRequest.pickupName}</Text></Text>
-                  <Text style={styles.matchSub}>Phone Contact: {matchedRequest.pickupPhone}</Text>
-                  <Text style={styles.matchSub}>Scheduled: {matchedRequest.time}</Text>
                 </View>
 
+                <View style={styles.matchBox}>
+                  <Text style={styles.matchTitle}>Student: {matchedRequest.studentName}</Text>
+                  <Text style={styles.matchSub}>Authorized Recipient: <Text style={styles.boldText}>{matchedRequest.pickupName}</Text></Text>
+                  <Text style={styles.matchSub}>Phone Contact: {matchedRequest.pickupPhone}</Text>
+                  <Text style={styles.matchSub}>PIN Code Match: <Text style={{ fontWeight: '800', color: COLORS.success }}>{matchedRequest.pinCode}</Text></Text>
+                  <Text style={styles.matchSub}>Notes: {matchedRequest.notes || 'No notes provided.'}</Text>
+                </View>
+
+                {matchedRequest.imageUri && (
+                  <View style={styles.proofPreviewBox}>
+                    <Text style={styles.proofLabel}>Verified Recipient Photo Proof:</Text>
+                    <Image source={{ uri: matchedRequest.imageUri }} style={styles.proofThumb} />
+                  </View>
+                )}
+
                 <View style={styles.actionRow}>
-                  {matchedRequest.status !== 'Verified' && matchedRequest.status !== 'Released' && (
+                  {matchedRequest.status !== 'Released' ? (
                     <Button
-                      title="1. Confirm Photo & Verify"
-                      onPress={() => updateStatus(matchedRequest.id, 'Verified')}
-                      iconName="checkmark-circle-outline"
-                      style={styles.flexBtn}
-                    />
-                  )}
-                  {matchedRequest.status !== 'Released' && (
-                    <Button
-                      title="2. Approve Gate Release"
+                      title="Confirm Release & Log Handover"
                       onPress={() => updateStatus(matchedRequest.id, 'Released')}
-                      variant="secondary"
-                      iconName="exit-outline"
+                      iconName="checkmark-done-circle-outline"
                       style={styles.flexBtn}
                     />
+                  ) : (
+                    <View style={styles.releasedBadgeBox}>
+                      <Ionicons name="checkmark-done" size={18} color={COLORS.success} />
+                      <Text style={styles.releasedBadgeText}>Student Released & Logged</Text>
+                    </View>
                   )}
                 </View>
               </Card>
             )}
+
+            {/* Figure 4.14: REJECTED VERIFICATION ATTEMPT SCREEN */}
+            {verificationResult?.status === 'REJECTED' && (
+              <Card style={{ borderColor: COLORS.danger, borderWidth: 2, backgroundColor: '#fff1f2' }}>
+                <View style={styles.rejectedHeaderRow}>
+                  <Ionicons name="close-circle" size={44} color={COLORS.danger} />
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.rejectedTitle}>VERIFICATION REJECTED</Text>
+                    <Text style={styles.rejectedSub}>Invalid, Expired, or Used Verification Code</Text>
+                  </View>
+                </View>
+
+                <View style={styles.rejectedInstructionCard}>
+                  <Ionicons name="alert-circle" size={24} color={COLORS.danger} style={{ marginBottom: 4 }} />
+                  <Text style={styles.rejectedInstructionHeading}>ACTION REQUIRED FOR SECURITY OFFICER:</Text>
+                  <Text style={styles.rejectedInstructionBody}>
+                    DO NOT RELEASE STUDENT. ESCALATE CASE TO CAMPUS SECURITY COMMAND IMMEDIATELY.
+                  </Text>
+                  <Text style={styles.rejectedMetaText}>Attempted PIN: {verificationResult.pin} • Incident Logged on Firebase Audit</Text>
+                </View>
+
+                <View style={styles.actionRow}>
+                  <Button
+                    title="Retry Code Entry"
+                    onPress={() => { setVerificationResult(null); setSearchPin(''); }}
+                    variant="secondary"
+                    iconName="refresh-outline"
+                    style={styles.flexBtn}
+                  />
+                  <Button
+                    title="Alert Security Command"
+                    onPress={() => navigation.navigate('SecurityTab')}
+                    iconName="shield-alert-outline"
+                    style={[styles.flexBtn, { backgroundColor: COLORS.danger }]}
+                  />
+                </View>
+              </Card>
+            )}
+          </View>
+        )}
+
+        {/* TAB 3: PICKUP HISTORY AND VERIFICATION AUDIT RECORD (Figure 4.15) */}
+        {activeTab === 'audit_log' && (
+          <View>
+            <Card title="Pickup Verification Audit Records" subtitle="Complete auditable log of gate release attempts (Firebase Sync)">
+              {auditLogs.length === 0 ? (
+                <Text style={{ textAlign: 'center', color: COLORS.textMuted, padding: SPACING.md }}>No audit logs recorded yet.</Text>
+              ) : (
+                auditLogs.map((log) => {
+                  const isSuccess = log.status === 'VERIFIED_SUCCESS';
+                  return (
+                    <View key={log.id} style={styles.auditRow}>
+                      <View style={styles.auditHeader}>
+                        <View style={[styles.auditBadge, { backgroundColor: isSuccess ? COLORS.successLight : COLORS.dangerLight }]}>
+                          <Ionicons name={isSuccess ? "checkmark-circle" : "close-circle"} size={14} color={isSuccess ? COLORS.success : COLORS.danger} style={{ marginRight: 4 }} />
+                          <Text style={[styles.auditBadgeText, { color: isSuccess ? COLORS.success : COLORS.danger }]}>
+                            {isSuccess ? 'VERIFIED HANDOVER' : 'REJECTED ATTEMPT'}
+                          </Text>
+                        </View>
+                        <Text style={styles.auditTime}>{log.timestamp}</Text>
+                      </View>
+
+                      <Text style={styles.auditTitle}>{log.studentName}</Text>
+                      <Text style={styles.auditSub}>Recipient / Claimer: <Text style={styles.boldText}>{log.pickupName}</Text> ({log.pickupPhone})</Text>
+                      <Text style={styles.auditSub}>PIN Code Presented: <Text style={{ fontWeight: '700' }}>{log.pinCode}</Text> • Verifier: {log.verifierName}</Text>
+                      {log.notes ? <Text style={styles.auditNotes}>Note: {log.notes}</Text> : null}
+                    </View>
+                  );
+                })
+              )}
+            </Card>
           </View>
         )}
 

@@ -7,7 +7,8 @@ import {
   TouchableOpacity, 
   Image, 
   Alert, 
-  Modal 
+  Modal,
+  Linking
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { Card } from '../../components/common/Card';
@@ -17,13 +18,13 @@ import { Avatar } from '../../components/common/Avatar';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { subscribeStudents, addStudentRecord, getConnectedChildren } from '../../services/dataService';
+import { subscribeStudentsForUser, addStudentRecord, updateStudentRecord, getConnectedChildren } from '../../services/dataService';
 
 const GRADES = ['All', 'My Children', 'Grade 1A', 'Grade 2A', 'Grade 3C', 'Grade 4B'];
 
 export const StudentRegistryScreen = ({ navigation }) => {
   const { userProfile } = useAuth();
-  const userRole = userProfile?.role || 'parent';
+  const userRole = userProfile?.role || null;
 
   const [students, setStudents] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,11 +39,16 @@ export const StudentRegistryScreen = ({ navigation }) => {
   const [guardianEmail, setGuardianEmail] = useState(userProfile?.email || '');
   const [guardianPhone, setGuardianPhone] = useState('');
   const [teacherName, setTeacherName] = useState('Mr. Joshua Ofori');
+  const [teacherEmail, setTeacherEmail] = useState('');
   const [studentPhotoUri, setStudentPhotoUri] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
 
   // Detail Modal State
   const [selectedStudent, setSelectedStudent] = useState(null);
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportSubject, setReportSubject] = useState('Safe Child student update');
+  const [reportBody, setReportBody] = useState('');
 
   // Open add modal and ensure guardian details are auto-filled for parent
   const handleOpenAddModal = () => {
@@ -51,13 +57,55 @@ export const StudentRegistryScreen = ({ navigation }) => {
     setAddModalVisible(true);
   };
 
+  const handleOpenStudentDetails = (student) => {
+    setSelectedStudent(student);
+    setTeacherName(student.teacherName || '');
+    setTeacherEmail(student.teacherEmail || '');
+  };
+
+  const handleCallGuardian = async () => {
+    const phone = selectedStudent?.guardianPhone || selectedStudent?.emergencyContact;
+    if (!phone) {
+      Alert.alert('Phone unavailable', 'No guardian phone number is saved for this student.');
+      return;
+    }
+    const url = `tel:${phone.replace(/[^0-9+]/g, '')}`;
+    if (await Linking.canOpenURL(url)) {
+      await Linking.openURL(url);
+    } else {
+      Alert.alert('Unable to open phone', 'This device cannot open the phone dialer.');
+    }
+  };
+
+  const handleOpenParentReport = () => {
+    if (!selectedStudent?.guardianEmail) {
+      Alert.alert('Email unavailable', 'No guardian email is saved for this student.');
+      return;
+    }
+    setReportSubject(`Safe Child report: ${selectedStudent.firstName} ${selectedStudent.lastName}`);
+    setReportBody(`Dear ${selectedStudent.guardianName || 'Parent/Guardian'},\n\nStudent: ${selectedStudent.firstName} ${selectedStudent.lastName}\nGrade: ${selectedStudent.grade || 'N/A'}\n\nReport:\n\nRegards,\nSafe Child Administration`);
+    setReportModalVisible(true);
+  };
+
+  const handleSendParentReport = async () => {
+    const email = selectedStudent?.guardianEmail;
+    if (!email) return;
+    const url = `mailto:${email}?subject=${encodeURIComponent(reportSubject)}&body=${encodeURIComponent(reportBody)}`;
+    if (await Linking.canOpenURL(url)) {
+      setReportModalVisible(false);
+      await Linking.openURL(url);
+    } else {
+      Alert.alert('Unable to open email', 'No email application is available on this device.');
+    }
+  };
+
   // Live Firebase Firestore Realtime Subscription
   useEffect(() => {
-    const unsubscribe = subscribeStudents((liveList) => {
+    const unsubscribe = subscribeStudentsForUser((liveList) => {
       setStudents(liveList);
-    });
+    }, userProfile);
     return () => unsubscribe();
-  }, []);
+  }, [userProfile]);
 
   const handlePickStudentPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -91,13 +139,14 @@ export const StudentRegistryScreen = ({ navigation }) => {
         lastName: lastName.trim(),
         grade,
         guardianName: guardianName.trim(),
-        guardianEmail: guardianEmail.trim() || userProfile?.email || 'guardian@educal.edu',
-        guardianPhone: guardianPhone.trim() || '+1 555-0100',
+        guardianEmail: guardianEmail.trim() || userProfile?.email || '',
+        guardianPhone: guardianPhone.trim(),
         teacherName: teacherName.trim(),
+        teacherEmail: teacherEmail.trim().toLowerCase(),
         status: 'Active',
         photoUri: studentPhotoUri,
         attendanceRate: '100%',
-        emergencyContact: guardianPhone.trim() || '+1 555-0100'
+        emergencyContact: guardianPhone.trim()
       };
 
       await addStudentRecord(newStudentData);
@@ -106,13 +155,45 @@ export const StudentRegistryScreen = ({ navigation }) => {
       // Reset form
       setFirstName('');
       setLastName('');
+      setTeacherEmail('');
       setStudentPhotoUri(null);
 
       Alert.alert('Student Saved to Firebase', `${newStudentData.firstName} ${newStudentData.lastName} has been registered and connected to your profile.`);
     } catch (err) {
-      Alert.alert('Error Saving', err.message || 'Could not save student to Firebase.');
+      console.error('Student Firestore write failed:', err);
+      Alert.alert(
+        'Error Saving Student',
+        `${err.message || 'Could not save student to Firebase.'}${err.code ? `\n\nFirebase code: ${err.code}` : ''}`
+      );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveTeacherAssignment = async () => {
+    if (!selectedStudent || userRole !== 'admin') return;
+    const normalizedEmail = teacherEmail.trim().toLowerCase();
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      Alert.alert('Teacher Email Required', 'Enter the email address used by the teacher to sign in.');
+      return;
+    }
+
+    try {
+      setAssignmentLoading(true);
+      await updateStudentRecord(selectedStudent.id, {
+        teacherName: teacherName.trim(),
+        teacherEmail: normalizedEmail
+      });
+      setSelectedStudent((current) => ({
+        ...current,
+        teacherName: teacherName.trim(),
+        teacherEmail: normalizedEmail
+      }));
+      Alert.alert('Student Updated', 'The student has been reassigned to the new teacher.');
+    } catch (err) {
+      Alert.alert('Unable to update student', err.message || 'Please check your connection and try again.');
+    } finally {
+      setAssignmentLoading(false);
     }
   };
 
@@ -206,7 +287,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 </View>
                 <TouchableOpacity 
                   style={styles.detailBtn}
-                  onPress={() => setSelectedStudent(st)}
+                  onPress={() => handleOpenStudentDetails(st)}
                 >
                   <Ionicons name="chevron-forward" size={20} color={COLORS.safetyBlue} />
                 </TouchableOpacity>
@@ -305,6 +386,16 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 iconName="easel-outline"
               />
 
+              <InputField
+                label="Teacher Email"
+                value={teacherEmail}
+                onChangeText={setTeacherEmail}
+                placeholder="e.g. teacher@example.com"
+                iconName="mail-outline"
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
               {/* Student Photo Picker */}
               <Text style={styles.photoUploadLabel}>Student Profile Picture (Optional)</Text>
               <TouchableOpacity 
@@ -385,7 +476,57 @@ export const StudentRegistryScreen = ({ navigation }) => {
                       <Text style={styles.detailItemVal}>{selectedStudent.emergencyContact}</Text>
                     </View>
                   </View>
+
+                  <View style={styles.detailItem}>
+                    <Ionicons name="easel-outline" size={18} color={COLORS.safetyBlue} />
+                    <View style={styles.detailItemText}>
+                      <Text style={styles.detailItemLabel}>Assigned Teacher</Text>
+                      <Text style={styles.detailItemVal}>{selectedStudent.teacherName || 'Not assigned'}</Text>
+                      <Text style={styles.detailItemVal}>{selectedStudent.teacherEmail || 'Teacher email not assigned'}</Text>
+                    </View>
+                  </View>
                 </View>
+
+                {userRole === 'admin' && (
+                  <View style={styles.parentActionsRow}>
+                    <TouchableOpacity style={styles.parentActionButton} onPress={handleCallGuardian}>
+                      <Ionicons name="call-outline" size={18} color={COLORS.white} />
+                      <Text style={styles.parentActionText}>Call Parent</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.parentActionButton, styles.emailActionButton]} onPress={handleOpenParentReport}>
+                      <Ionicons name="mail-outline" size={18} color={COLORS.white} />
+                      <Text style={styles.parentActionText}>Email Report</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {userRole === 'admin' && (
+                  <>
+                    <InputField
+                      label="Reassign Teacher Name"
+                      value={teacherName}
+                      onChangeText={setTeacherName}
+                      placeholder="Teacher full name"
+                      iconName="person-outline"
+                    />
+                    <InputField
+                      label="Reassign Teacher Email"
+                      value={teacherEmail}
+                      onChangeText={setTeacherEmail}
+                      placeholder="Email used to sign in"
+                      iconName="mail-outline"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                    <Button
+                      title="Save Teacher Assignment"
+                      onPress={handleSaveTeacherAssignment}
+                      loading={assignmentLoading}
+                      iconName="save-outline"
+                      style={{ marginTop: SPACING.sm }}
+                    />
+                  </>
+                )}
 
                 <Button
                   title="Close Profile"
@@ -395,6 +536,40 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 />
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={reportModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Email Parent Report</Text>
+              <TouchableOpacity onPress={() => setReportModalVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.reportRecipient}>To: {selectedStudent?.guardianEmail}</Text>
+            <InputField
+              label="Subject"
+              value={reportSubject}
+              onChangeText={setReportSubject}
+              iconName="text-outline"
+            />
+            <InputField
+              label="Report Message"
+              value={reportBody}
+              onChangeText={setReportBody}
+              placeholder="Write the report for the parent..."
+              iconName="create-outline"
+              multiline={true}
+              numberOfLines={7}
+            />
+            <Button
+              title="Open Email App"
+              onPress={handleSendParentReport}
+              iconName="send-outline"
+            />
           </View>
         </View>
       </Modal>
@@ -641,6 +816,35 @@ const styles = StyleSheet.create({
   },
   detailSection: {
     gap: 12,
+  },
+  parentActionsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: SPACING.md,
+  },
+  parentActionButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.success,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  emailActionButton: {
+    backgroundColor: COLORS.safetyBlue,
+  },
+  parentActionText: {
+    color: COLORS.white,
+    fontSize: 13,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
+  reportRecipient: {
+    color: COLORS.textSecondary,
+    fontSize: 13,
+    marginBottom: SPACING.md,
   },
   detailItem: {
     flexDirection: 'row',

@@ -18,18 +18,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 const LOGO_IMAGE = require('../../../assets/logo.png');
 
-const DEMO_ACCOUNTS = [
-  { label: 'Admin', email: 'kingsleyeshunmintah@gmail.com', password: '1234@1234.com', icon: 'shield-checkmark' },
-  { label: 'Teacher', email: 'joshuaofori879@gmail.com', password: '1234@1234.com', icon: 'school' },
-  { label: 'Parent', email: 'ecode517@gmail.com', password: '1234@1234.com', icon: 'people' },
-  { label: 'Verifier', email: 'oforijoshua198@gmail.com', password: '1234@1234.com', icon: 'checkmark-circle' },
-  { label: 'Security', email: 'awuahselinabaffour@gmail.com', password: '1234@1234.com', icon: 'warning' },
-];
-
 export const LoginScreen = ({ navigation }) => {
   const { login, resetPassword } = useAuth();
-  const [email, setEmail] = useState('kingsleyeshunmintah@gmail.com');
-  const [password, setPassword] = useState('1234@1234.com');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -48,12 +40,6 @@ export const LoginScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickFill = (acc) => {
-    setEmail(acc.email);
-    setPassword(acc.password);
-    setErrorMessage('');
   };
 
   const handleForgotPassword = () => {
@@ -107,32 +93,6 @@ export const LoginScreen = ({ navigation }) => {
             </View>
           ) : null}
 
-          {/* Quick Tap Account Selector */}
-          <Text style={styles.quickFillLabel}>Quick Tap Account Login:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.quickFillScroll}>
-            {DEMO_ACCOUNTS.map((acc) => {
-              const isActive = email === acc.email;
-              return (
-                <TouchableOpacity
-                  key={acc.email}
-                  style={[styles.quickFillChip, isActive && styles.quickFillChipActive]}
-                  onPress={() => handleQuickFill(acc)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons 
-                    name={acc.icon} 
-                    size={14} 
-                    color={isActive ? COLORS.white : COLORS.safetyBlue} 
-                    style={{ marginRight: 4 }}
-                  />
-                  <Text style={[styles.quickFillText, isActive && styles.quickFillTextActive]}>
-                    {acc.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
           <InputField
             label="Email Address"
             value={email}
@@ -157,7 +117,7 @@ export const LoginScreen = ({ navigation }) => {
           </TouchableOpacity>
 
           <Button
-            title="Sign In as Admin"
+            title="Sign In"
             onPress={handleLogin}
             loading={loading}
             iconName="log-in-outline"

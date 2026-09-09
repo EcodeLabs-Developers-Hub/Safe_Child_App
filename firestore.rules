@@ -1,0 +1,89 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function hasRole(role) {
+      return signedIn()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isStaff() {
+      return isAdmin() || hasRole('teacher') || hasRole('security') || hasRole('pickup_verifier');
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if signedIn() && request.auth.uid == userId;
+      allow update: if isAdmin()
+        || (signedIn()
+          && request.auth.uid == userId
+          && request.resource.data.role == resource.data.role);
+      allow delete: if false;
+    }
+
+    match /students/{studentId} {
+      allow read: if isStaff()
+        || (hasRole('parent') && resource.data.guardianEmail == request.auth.token.email);
+      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+      allow update: if signedIn() && (resource.data.createdByUid == request.auth.uid || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /pickup_requests/{requestId} {
+      allow read: if isStaff() || (hasRole('parent') && resource.data.createdByUid == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+      allow update: if isStaff() || (hasRole('parent') && resource.data.createdByUid == request.auth.uid);
+    }
+
+    match /authorized_contacts/{contactId} {
+      allow read: if isStaff() || (hasRole('parent') && resource.data.createdByUid == request.auth.uid);
+      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+      allow update, delete: if isStaff()
+        || (hasRole('parent') && resource.data.createdByUid == request.auth.uid);
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if isStaff()
+        || (hasRole('parent') && resource.data.guardianEmail == request.auth.token.email);
+      allow create: if isStaff();
+      allow update: if isStaff();
+    }
+
+    match /pickup_audits/{auditId} {
+      allow read, write: if isStaff();
+    }
+
+    match /alerts/{alertId} {
+      allow read, write: if isStaff();
+    }
+
+    match /bus_schedules/{scheduleId} {
+      allow read, write: if signedIn();
+    }
+
+    match /pta_meetings/{meetingId} {
+      allow read, write: if signedIn();
+    }
+
+    match /announcements/{announcementId} {
+      allow read, write: if signedIn();
+    }
+
+    match /ip_blocks/{blockId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

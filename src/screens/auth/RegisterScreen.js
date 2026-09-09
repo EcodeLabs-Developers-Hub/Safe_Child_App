@@ -53,7 +53,7 @@ export const RegisterScreen = ({ navigation }) => {
 
     try {
       setLoading(true);
-      await register(email, password, displayName, selectedRole);
+      await register(email, password, displayName, 'parent');
     } catch (err) {
       setErrorMessage(err.message || 'Registration failed. Please try again.');
     } finally {
@@ -74,8 +74,8 @@ export const RegisterScreen = ({ navigation }) => {
         </TouchableOpacity>
 
         <View style={styles.formCard}>
-          <Text style={styles.title}>Create Account</Text>
-          <Text style={styles.subtitle}>Register for Safe Child campus network</Text>
+          <Text style={styles.title}>Parent & Guardian Sign Up</Text>
+          <Text style={styles.subtitle}>Register for Safe Child parent portal</Text>
 
           {errorMessage ? (
             <View style={styles.errorBanner}>
@@ -121,34 +121,16 @@ export const RegisterScreen = ({ navigation }) => {
             secureTextEntry={true}
           />
 
-          {/* Role Selection */}
-          <Text style={styles.roleLabel}>Select Account Role</Text>
-          <View style={styles.roleGrid}>
-            {ROLES.map((role) => {
-              const active = selectedRole === role.id;
-              return (
-                <TouchableOpacity
-                  key={role.id}
-                  style={[styles.roleChip, active && styles.roleChipActive]}
-                  onPress={() => setSelectedRole(role.id)}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons 
-                    name={role.icon} 
-                    size={16} 
-                    color={active ? COLORS.white : COLORS.textSecondary} 
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text style={[styles.roleChipText, active && styles.roleChipTextActive]}>
-                    {role.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+          {/* Account Role Information Banner */}
+          <View style={styles.roleNoticeBox}>
+            <Ionicons name="information-circle-outline" size={20} color={COLORS.safetyBlue} style={{ marginRight: 8 }} />
+            <Text style={styles.roleNoticeText}>
+              Self-registered accounts are created as <Text style={{ fontWeight: '700' }}>Parent / Guardian</Text>. Specialized staff access (Teacher, Security, Verifier, Admin) is assigned by Campus Administrators.
+            </Text>
           </View>
 
           <Button
-            title="Create Safe Child Account"
+            title="Create Parent Account"
             onPress={handleRegister}
             loading={loading}
             iconName="person-add-outline"
@@ -226,27 +208,21 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: SPACING.md,
   },
-  roleChip: {
+  roleNoticeBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: COLORS.safetyBlueLight,
+    padding: SPACING.sm + 2,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.background,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.surfaceBorder,
+    borderColor: '#bfdbfe',
   },
-  roleChipActive: {
-    backgroundColor: COLORS.safetyBlue,
-    borderColor: COLORS.safetyBlue,
-  },
-  roleChipText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
-  roleChipTextActive: {
-    color: COLORS.white,
-    fontWeight: '700',
+  roleNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    color: COLORS.primaryNavy,
+    lineHeight: 16,
   },
 });

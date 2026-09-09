@@ -6,22 +6,48 @@ import {
   ScrollView, 
   TouchableOpacity, 
   Alert, 
-  Modal 
+  Modal,
+  Platform
 } from 'react-native';
 import { Card } from '../../components/common/Card';
 import { InputField } from '../../components/common/InputField';
 import { Button } from '../../components/common/Button';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { subscribeAttendance, updateAttendanceRecord } from '../../services/dataService';
+import { subscribeAttendance, updateAttendanceRecord, getAttendanceHistory } from '../../services/dataService';
+import { useAuth } from '../../context/AuthContext';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system';
 
 const GRADES = ['All', 'Grade 1A', 'Grade 2A', 'Grade 3C', 'Grade 4B'];
 
+const toDateKey = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatDate = (date) => date.toLocaleDateString('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric'
+});
+
 export const AttendanceScreen = () => {
+  const { userProfile } = useAuth();
   const [roster, setRoster] = useState([]);
   const [selectedGrade, setSelectedGrade] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [exportStudent, setExportStudent] = useState(null);
+  const [exportStartDate, setExportStartDate] = useState(toDateKey(new Date()));
+  const [exportEndDate, setExportEndDate] = useState(toDateKey(new Date()));
+  const [exporting, setExporting] = useState(false);
 
   // Note Modal State
   const [activeNoteStudent, setActiveNoteStudent] = useState(null);
@@ -31,14 +57,28 @@ export const AttendanceScreen = () => {
   useEffect(() => {
     const unsubscribe = subscribeAttendance((liveRoster) => {
       setRoster(liveRoster);
-    });
+    }, userProfile, toDateKey(selectedDate));
     return () => unsubscribe();
-  }, []);
+  }, [userProfile, selectedDate]);
 
-  const toggleStatus = async (studentId, newStatus) => {
-    const existing = roster.find(r => r.id === studentId);
+  const moveDate = (days) => {
+    setSelectedDate((currentDate) => {
+      const nextDate = new Date(currentDate);
+      nextDate.setDate(nextDate.getDate() + days);
+      return nextDate;
+    });
+  };
+
+  const goToToday = () => setSelectedDate(new Date());
+
+  const toggleStatus = async (student, newStatus) => {
+    const existing = roster.find(r => r.id === student.id);
     const note = existing ? (existing.note || '') : '';
-    await updateAttendanceRecord(studentId, newStatus, note);
+    try {
+      await updateAttendanceRecord(student, newStatus, note, toDateKey(selectedDate));
+    } catch (err) {
+      Alert.alert('Unable to save attendance', err.message || 'Please check your connection and try again.');
+    }
   };
 
   const handleOpenNoteModal = (student) => {
@@ -48,7 +88,7 @@ export const AttendanceScreen = () => {
 
   const handleSaveNote = async () => {
     if (activeNoteStudent) {
-      await updateAttendanceRecord(activeNoteStudent.id, activeNoteStudent.status, noteText.trim());
+      await updateAttendanceRecord(activeNoteStudent, activeNoteStudent.status, noteText.trim(), toDateKey(selectedDate));
       setActiveNoteStudent(null);
       setNoteText('');
       Alert.alert('Firebase Updated', 'Teacher note saved to Firebase.');
@@ -56,11 +96,81 @@ export const AttendanceScreen = () => {
   };
 
   const handleSaveAttendance = () => {
-    setSaving(true);
-    setTimeout(() => {
-      setSaving(false);
-      Alert.alert('Attendance Synced', 'Today\'s student attendance log is synchronized with Firebase Firestore.');
-    }, 500);
+    Alert.alert('Attendance Saved', 'Attendance changes are saved to Firebase as you make them.');
+  };
+
+  const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const downloadCsv = async (rows, filename) => {
+    const csv = [
+      ['Date', 'Student', 'Grade', 'Guardian', 'Status', 'Note'].map(escapeCsv).join(','),
+      ...rows.map((row) => [row.date, row.name, row.grade, row.guardian, row.status, row.note].map(escapeCsv).join(','))
+    ].join('\n');
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const fileUri = `${FileSystem.documentDirectory}${filename}`;
+    await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
+    await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Export attendance CSV' });
+  };
+
+  const exportPdf = async (rows, title) => {
+    const tableRows = rows.map((row) => `<tr><td>${row.date}</td><td>${row.name}</td><td>${row.grade}</td><td>${row.guardian}</td><td>${row.status}</td><td>${row.note || ''}</td></tr>`).join('');
+    const html = `<html><body><h1>${title}</h1><table border="1" cellspacing="0" cellpadding="6"><thead><tr><th>Date</th><th>Student</th><th>Grade</th><th>Guardian</th><th>Status</th><th>Note</th></tr></thead><tbody>${tableRows}</tbody></table></body></html>`;
+
+    if (Platform.OS === 'web') {
+      const printWindow = window.open('', '_blank');
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+      return;
+    }
+
+    const result = await Print.printToFileAsync({ html });
+    await Sharing.shareAsync(result.uri, { mimeType: 'application/pdf', dialogTitle: 'Export attendance PDF' });
+  };
+
+  const handleExport = async (format, scope) => {
+    try {
+      setExporting(true);
+      let rows = [];
+      let title = '';
+      if (scope === 'day') {
+        rows = roster.map((row) => ({ ...row, date: toDateKey(selectedDate) }));
+        title = `Attendance for ${formatDate(selectedDate)}`;
+      } else {
+        if (!exportStudent || !/^\d{4}-\d{2}-\d{2}$/.test(exportStartDate) || !/^\d{4}-\d{2}-\d{2}$/.test(exportEndDate) || exportStartDate > exportEndDate) {
+          Alert.alert('Invalid export range', 'Select a student and enter dates as YYYY-MM-DD with the start date first.');
+          return;
+        }
+        rows = await getAttendanceHistory(exportStudent.studentId || exportStudent.id, exportStartDate, exportEndDate);
+        title = `${exportStudent.name} attendance (${exportStartDate} to ${exportEndDate})`;
+      }
+
+      if (!rows.length) {
+        Alert.alert('Nothing to export', 'No attendance records were found for this selection.');
+        return;
+      }
+      const filename = `attendance-${scope === 'day' ? toDateKey(selectedDate) : exportStudent.name.replace(/\s+/g, '-').toLowerCase()}`;
+      if (format === 'csv') await downloadCsv(rows, `${filename}.csv`);
+      else await exportPdf(rows, title);
+      setExportModalVisible(false);
+    } catch (err) {
+      Alert.alert('Export failed', err.message || 'Unable to create the attendance export.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const getBadgeStyle = (status) => {
@@ -93,7 +203,7 @@ export const AttendanceScreen = () => {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.pageTitle}>Daily Attendance Roster</Text>
-            <Text style={styles.pageSubtitle}>Class Roster • {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} (Firebase)</Text>
+            <Text style={styles.pageSubtitle}>Assigned Class Roster • {formatDate(selectedDate)} (Firebase)</Text>
           </View>
           <Button 
             title="Save Log" 
@@ -102,6 +212,29 @@ export const AttendanceScreen = () => {
             iconName="checkmark-done"
             style={styles.saveBtn}
           />
+        </View>
+
+        <Button
+          title="Export Attendance"
+          onPress={() => setExportModalVisible(true)}
+          variant="outline"
+          iconName="download-outline"
+          style={styles.exportButton}
+        />
+
+        <View style={styles.dateNavigator}>
+          <TouchableOpacity style={styles.dateButton} onPress={() => moveDate(-1)}>
+            <Ionicons name="chevron-back" size={20} color={COLORS.safetyBlue} />
+          </TouchableOpacity>
+          <View style={styles.dateCenter}>
+            <Text style={styles.dateLabel}>{formatDate(selectedDate)}</Text>
+            <TouchableOpacity onPress={goToToday}>
+              <Text style={styles.todayLink}>Go to today</Text>
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity style={styles.dateButton} onPress={() => moveDate(1)}>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.safetyBlue} />
+          </TouchableOpacity>
         </View>
 
         {/* Analytics Summary Card */}
@@ -149,7 +282,9 @@ export const AttendanceScreen = () => {
 
         {/* Roster Table */}
         <Card title="Attendance Register (Firebase Sync)">
-          {filteredRoster.map((student) => (
+          {filteredRoster.length === 0 ? (
+            <Text style={styles.emptyText}>No attendance records found.</Text>
+          ) : filteredRoster.map((student) => (
             <View key={student.id} style={styles.studentRow}>
               <View style={styles.studentHeader}>
                 <View style={{ flex: 1 }}>
@@ -175,7 +310,7 @@ export const AttendanceScreen = () => {
               ) : null}
 
               <View style={styles.statusButtonsRow}>
-                {['Present', 'Absent', 'Late'].map((st) => {
+                {userProfile?.role !== 'parent' && ['Present', 'Absent', 'Late'].map((st) => {
                   const active = student.status === st;
                   const badge = getBadgeStyle(st);
                   return (
@@ -185,7 +320,7 @@ export const AttendanceScreen = () => {
                         styles.statusBtn,
                         active && { backgroundColor: badge.bg, borderColor: badge.text }
                       ]}
-                      onPress={() => toggleStatus(student.id, st)}
+                      onPress={() => toggleStatus(student, st)}
                       activeOpacity={0.8}
                     >
                       <Text style={[styles.statusBtnText, active && { color: badge.text, fontWeight: '700' }]}>
@@ -199,6 +334,34 @@ export const AttendanceScreen = () => {
           ))}
         </Card>
       </ScrollView>
+
+      <Modal visible={exportModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Export Attendance</Text>
+              <TouchableOpacity onPress={() => setExportModalVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.exportHelp}>Export all students for the selected day, or one student across a date range.</Text>
+            <Button title={`All Students • ${toDateKey(selectedDate)} • CSV`} onPress={() => handleExport('csv', 'day')} loading={exporting} iconName="document-text-outline" />
+            <Button title={`All Students • ${toDateKey(selectedDate)} • PDF`} onPress={() => handleExport('pdf', 'day')} loading={exporting} iconName="document-outline" style={{ marginTop: SPACING.sm }} />
+            <Text style={styles.exportSectionTitle}>Individual student history</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.studentExportPicker}>
+              {roster.map((student) => (
+                <TouchableOpacity key={student.studentId || student.id} style={[styles.studentExportChip, exportStudent?.studentId === student.studentId && styles.studentExportChipActive]} onPress={() => setExportStudent(student)}>
+                  <Text style={[styles.studentExportChipText, exportStudent?.studentId === student.studentId && styles.studentExportChipTextActive]}>{student.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <InputField label="Start date (YYYY-MM-DD)" value={exportStartDate} onChangeText={setExportStartDate} placeholder="2026-09-01" iconName="calendar-outline" />
+            <InputField label="End date (YYYY-MM-DD)" value={exportEndDate} onChangeText={setExportEndDate} placeholder="2026-09-08" iconName="calendar-outline" />
+            <Button title="Individual Student • CSV" onPress={() => handleExport('csv', 'student')} loading={exporting} iconName="download-outline" />
+            <Button title="Individual Student • PDF" onPress={() => handleExport('pdf', 'student')} loading={exporting} iconName="download-outline" style={{ marginTop: SPACING.sm }} />
+          </View>
+        </View>
+      </Modal>
 
       {/* Teacher Note Modal */}
       <Modal visible={!!activeNoteStudent} animationType="slide" transparent={true}>
@@ -252,6 +415,39 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: SPACING.sm,
   },
+  dateNavigator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceBorder,
+    borderRadius: RADIUS.md,
+    padding: SPACING.xs,
+    marginBottom: SPACING.md,
+  },
+  dateButton: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.safetyBlueLight,
+  },
+  dateCenter: {
+    alignItems: 'center',
+  },
+  dateLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primaryNavy,
+  },
+  todayLink: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.safetyBlue,
+    marginTop: 2,
+  },
   pageTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -264,6 +460,47 @@ const styles = StyleSheet.create({
   saveBtn: {
     height: 40,
     paddingHorizontal: 12,
+  },
+  exportButton: {
+    marginBottom: SPACING.md,
+  },
+  exportHelp: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginBottom: SPACING.md,
+    lineHeight: 19,
+  },
+  exportSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.primaryNavy,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+  },
+  studentExportPicker: {
+    flexDirection: 'row',
+    marginBottom: SPACING.md,
+  },
+  studentExportChip: {
+    borderWidth: 1,
+    borderColor: COLORS.surfaceBorder,
+    borderRadius: RADIUS.full,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+    backgroundColor: COLORS.white,
+  },
+  studentExportChipActive: {
+    backgroundColor: COLORS.safetyBlue,
+    borderColor: COLORS.safetyBlue,
+  },
+  studentExportChipText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  studentExportChipTextActive: {
+    color: COLORS.white,
   },
   analyticsCard: {
     marginBottom: SPACING.md,
@@ -321,6 +558,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.background,
+  },
+  emptyText: {
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    paddingVertical: SPACING.md,
   },
   studentHeader: {
     flexDirection: 'row',
@@ -382,7 +624,7 @@ const styles = StyleSheet.create({
   },
   modalHeader: {
     flexDirection: 'row',
-    justify.content: 'space-between',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: SPACING.sm,
   },

@@ -3,13 +3,13 @@ import {
   signInWithEmailAndPassword, 
   signOut, 
   sendPasswordResetEmail,
+  sendEmailVerification,
   updateProfile
 } from 'firebase/auth';
 import { auth } from '../config/firebase';
 import { createUserProfile, getUserProfile } from './profileService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const MOCK_USERS_KEY = '@safe_child_mock_users';
 const CURRENT_USER_KEY = '@safe_child_current_session';
 
 /**
@@ -42,7 +42,7 @@ export const mapAuthErrorToMessage = (errorCode) => {
 };
 
 /**
- * Sign up a new user with Email, Password, Display Name, and Role
+ * Sign up a new user with Email, Password, Display Name, and Role (default: parent)
  */
 export const signUpUser = async (email, password, displayName, role = 'parent') => {
   const cleanEmail = email.trim().toLowerCase();
@@ -57,66 +57,38 @@ export const signUpUser = async (email, password, displayName, role = 'parent') 
   }
 
   try {
-    // Attempt Firebase Authentication
     if (auth && auth.config) {
       const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
       const user = userCredential.user;
 
-      // Update Firebase auth profile display name
       await updateProfile(user, { displayName: cleanName });
+      await sendEmailVerification(user);
 
-      // Create persistent profile document in Firestore / Database
       const profileData = await createUserProfile(user.uid, {
         uid: user.uid,
         email: cleanEmail,
         displayName: cleanName,
-        role: role,
-        bio: `${role.charAt(0).toUpperCase() + role.slice(1)} account for Safe Child system.`,
-        photoURL: null, // Default avatar logo used if null
+        role: 'parent',
+        bio: '',
+        photoURL: null,
         createdAt: new Date().toISOString()
       });
 
       await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ uid: user.uid, email: cleanEmail }));
       return { user, profile: profileData };
+    } else {
+      throw new Error('Firebase Authentication is not configured. Please check your config.');
     }
   } catch (firebaseErr) {
     if (firebaseErr.code && firebaseErr.code.startsWith('auth/')) {
       throw new Error(mapAuthErrorToMessage(firebaseErr.code));
     }
+    throw firebaseErr;
   }
-
-  // Local/Demo Persistence Fallback
-  const existingUsersJson = await AsyncStorage.getItem(MOCK_USERS_KEY);
-  const mockUsers = existingUsersJson ? JSON.parse(existingUsersJson) : {};
-
-  if (mockUsers[cleanEmail]) {
-    throw new Error(mapAuthErrorToMessage('auth/email-already-in-use'));
-  }
-
-  const mockUid = 'user_' + Date.now();
-  const mockUser = { uid: mockUid, email: cleanEmail, displayName: cleanName };
-  
-  mockUsers[cleanEmail] = { ...mockUser, password, role };
-  await AsyncStorage.setItem(MOCK_USERS_KEY, JSON.stringify(mockUsers));
-
-  const profileData = await createUserProfile(mockUid, {
-    uid: mockUid,
-    email: cleanEmail,
-    displayName: cleanName,
-    role: role,
-    bio: `${role.charAt(0).toUpperCase() + role.slice(1)} account registered on Safe Child.`,
-    photoURL: null,
-    createdAt: new Date().toISOString()
-  });
-
-  const sessionObj = { uid: mockUid, email: cleanEmail, displayName: cleanName, role };
-  await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionObj));
-
-  return { user: mockUser, profile: profileData };
 };
 
 /**
- * Sign in an existing user with Email and Password
+ * Sign in an existing user with Email and Password strictly using Firebase Auth
  */
 export const signInUser = async (email, password) => {
   const cleanEmail = email.trim().toLowerCase();
@@ -125,116 +97,40 @@ export const signInUser = async (email, password) => {
     throw new Error('Please enter both your email address and password.');
   }
 
-  // 1. Try Firebase Authentication
   try {
     if (auth && auth.config) {
-      try {
-        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
-        const user = userCredential.user;
-        const profile = await getUserProfile(user.uid);
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const user = userCredential.user;
+      let profile = await getUserProfile(user.uid);
 
-        await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ uid: user.uid, email: cleanEmail }));
-        return { user, profile };
-      } catch (fbErr) {
-        // Auto-provision default seed accounts in Firebase if missing or invalid credentials
-        const seedAccounts = {
-          'kingsleyeshunmintah@gmail.com': { role: 'admin', name: 'Kingsley Mintah (Admin)' },
-          'joshuaofori879@gmail.com': { role: 'teacher', name: 'Joshua Ofori (Teacher)' },
-          'ecode517@gmail.com': { role: 'parent', name: 'Parent Guardian' },
-          'awuahselinabaffour@gmail.com': { role: 'security', name: 'Selina Awuah (Security)' },
-          'oforijoshua198@gmail.com': { role: 'pickup_verifier', name: 'Joshua Verifier' }
-        };
-
-        const seedInfo = seedAccounts[cleanEmail];
-
-        if (seedInfo && (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential')) {
-          try {
-            // Attempt to create user credential directly in Firebase Auth
-            const newCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-            const user = newCred.user;
-            await updateProfile(user, { displayName: seedInfo.name });
-            const profile = await createUserProfile(user.uid, {
-              uid: user.uid,
-              email: cleanEmail,
-              displayName: seedInfo.name,
-              role: seedInfo.role,
-              bio: `Official ${seedInfo.role.toUpperCase()} account for Safe Child Campus Safety.`,
-              photoURL: null,
-              createdAt: new Date().toISOString()
-            });
-            await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ uid: user.uid, email: cleanEmail }));
-            return { user, profile };
-          } catch (createErr) {
-            console.warn("Auto seed creation notice:", createErr.message);
-          }
-        }
-
-        if (fbErr.code && fbErr.code.startsWith('auth/')) {
-          throw new Error(mapAuthErrorToMessage(fbErr.code));
-        }
-      }
+      await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify({ uid: user.uid, email: cleanEmail }));
+      return { user, profile };
+    } else {
+      throw new Error('Firebase Authentication is not configured.');
     }
   } catch (firebaseErr) {
-    if (firebaseErr.message && !firebaseErr.message.includes('auth/')) {
-      throw firebaseErr;
+    if (firebaseErr.code && firebaseErr.code.startsWith('auth/')) {
+      throw new Error(mapAuthErrorToMessage(firebaseErr.code));
     }
+    throw firebaseErr;
   }
-
-  // 2. Local / Demo Auth Fallback
-  const seedAccounts = {
-    'kingsleyeshunmintah@gmail.com': { role: 'admin', name: 'Kingsley Mintah (Admin)' },
-    'joshuaofori879@gmail.com': { role: 'teacher', name: 'Joshua Ofori (Teacher)' },
-    'ecode517@gmail.com': { role: 'parent', name: 'Parent Guardian' },
-    'awuahselinabaffour@gmail.com': { role: 'security', name: 'Selina Awuah (Security)' },
-    'oforijoshua198@gmail.com': { role: 'pickup_verifier', name: 'Joshua Verifier' }
-  };
-
-  const seedAcc = seedAccounts[cleanEmail];
-  if (seedAcc) {
-    const mockUid = 'seed_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
-    const profile = await createUserProfile(mockUid, {
-      uid: mockUid,
-      email: cleanEmail,
-      displayName: seedAcc.name,
-      role: seedAcc.role,
-      bio: `Official ${seedAcc.role.toUpperCase()} account for Safe Child Campus Safety.`,
-      photoURL: null,
-      createdAt: new Date().toISOString()
-    });
-    const sessionObj = { uid: mockUid, email: cleanEmail, displayName: seedAcc.name, role: seedAcc.role };
-    await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionObj));
-    return { user: { uid: mockUid, email: cleanEmail, displayName: seedAcc.name }, profile };
-  }
-
-  const existingUsersJson = await AsyncStorage.getItem(MOCK_USERS_KEY);
-  const mockUsers = existingUsersJson ? JSON.parse(existingUsersJson) : {};
-
-  const existingAccount = mockUsers[cleanEmail];
-  if (existingAccount && existingAccount.password === password) {
-    const profile = await getUserProfile(existingAccount.uid);
-    const sessionObj = { uid: existingAccount.uid, email: cleanEmail, displayName: existingAccount.displayName, role: existingAccount.role };
-    await AsyncStorage.setItem(CURRENT_USER_KEY, JSON.stringify(sessionObj));
-    return { 
-      user: { uid: existingAccount.uid, email: cleanEmail, displayName: existingAccount.displayName }, 
-      profile 
-    };
-  }
-
-  throw new Error(mapAuthErrorToMessage('auth/invalid-credential'));
 };
 
 /**
  * Sign out the currently authenticated user
  */
 export const signOutAuth = async () => {
-  try {
-    if (auth && auth.currentUser) {
-      await signOut(auth);
-    }
-  } catch (err) {
-    console.warn("Firebase signout warning:", err);
-  }
+  if (!auth) throw new Error('Firebase Authentication is not configured.');
+  console.info('Signing out Firebase user:', auth.currentUser?.uid || 'no active user');
+  await signOut(auth);
   await AsyncStorage.removeItem(CURRENT_USER_KEY);
+};
+
+export const sendVerificationEmail = async () => {
+  if (!auth?.currentUser) throw new Error('You must be signed in to request verification.');
+  if (auth.currentUser.emailVerified) return false;
+  await sendEmailVerification(auth.currentUser);
+  return true;
 };
 
 /**

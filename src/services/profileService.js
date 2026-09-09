@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, getDocs, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,25 +13,18 @@ export const createUserProfile = async (uid, initialData) => {
     uid,
     displayName: initialData.displayName || 'Safe Child User',
     email: initialData.email || '',
-    bio: initialData.bio || 'Safe Child campus member.',
-    role: initialData.role || 'parent',
+    bio: initialData.bio || '',
+    role: initialData.role,
     phone: initialData.phone || '',
     photoURL: initialData.photoURL || null, // null triggers default logo avatar
     updatedAt: new Date().toISOString(),
     createdAt: initialData.createdAt || new Date().toISOString()
   };
 
-  // 1. Try Firestore persistence
-  try {
-    if (db) {
-      const userRef = doc(db, 'users', uid);
-      await setDoc(userRef, defaultProfile, { merge: true });
-    }
-  } catch (err) {
-    console.warn('Firestore profile save notice:', err.message);
-  }
+  if (!db) throw new Error('Firebase database is not configured.');
+  const userRef = doc(db, 'users', uid);
+  await setDoc(userRef, defaultProfile, { merge: true });
 
-  // 2. Always sync to local AsyncStorage cache for instant offline responsiveness
   try {
     const rawCache = await AsyncStorage.getItem(PROFILES_STORAGE_KEY);
     const profiles = rawCache ? JSON.parse(rawCache) : {};
@@ -50,51 +43,25 @@ export const createUserProfile = async (uid, initialData) => {
 export const getUserProfile = async (uid) => {
   if (!uid) return null;
 
-  // 1. Check local AsyncStorage cache first for immediate load
-  let cachedProfile = null;
-  try {
-    const rawCache = await AsyncStorage.getItem(PROFILES_STORAGE_KEY);
-    if (rawCache) {
-      const profiles = JSON.parse(rawCache);
-      cachedProfile = profiles[uid];
-    }
-  } catch (e) {
-    console.warn('Cache read error:', e);
-  }
+  if (!db) throw new Error('Firebase database is not configured.');
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (!snap.exists()) return null;
+  const profile = { uid, ...snap.data() };
+  const rawCache = await AsyncStorage.getItem(PROFILES_STORAGE_KEY);
+  const profiles = rawCache ? JSON.parse(rawCache) : {};
+  profiles[uid] = profile;
+  await AsyncStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(profiles));
+  return profile;
+};
 
-  // 2. Fetch fresh data from Firestore
-  try {
-    if (db) {
-      const userRef = doc(db, 'users', uid);
-      const snap = await getDoc(userRef);
-      if (snap.exists()) {
-        const firestoreData = snap.data();
-        // Update local cache
-        const rawCache = await AsyncStorage.getItem(PROFILES_STORAGE_KEY);
-        const profiles = rawCache ? JSON.parse(rawCache) : {};
-        profiles[uid] = firestoreData;
-        await AsyncStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(profiles));
-        return firestoreData;
-      }
-    }
-  } catch (err) {
-    console.warn('Firestore profile fetch notice:', err.message);
-  }
+export const subscribeUserProfile = (uid, onProfile, onError) => {
+  if (!uid || !db) return () => {};
 
-  if (cachedProfile) {
-    return cachedProfile;
-  }
-
-  // Generate fallback default profile if none exists yet
-  return {
-    uid,
-    displayName: 'User',
-    email: '',
-    bio: 'Safe Child app member.',
-    role: 'parent',
-    photoURL: null,
-    updatedAt: new Date().toISOString()
-  };
+  return onSnapshot(
+    doc(db, 'users', uid),
+    (snapshot) => onProfile(snapshot.exists() ? { uid, ...snapshot.data() } : null),
+    onError
+  );
 };
 
 /**
@@ -105,24 +72,17 @@ export const updateUserProfile = async (uid, updateFields) => {
 
   const updatedData = {
     ...updateFields,
-    updatedAt: new Date().toISOString()
+    updatedAt: serverTimestamp()
   };
 
-  // 1. Update Firestore
-  try {
-    if (db) {
-      const userRef = doc(db, 'users', uid);
-      await updateDoc(userRef, updatedData);
-    }
-  } catch (err) {
-    console.warn('Firestore update warning:', err.message);
-  }
+  if (!db) throw new Error('Firebase database is not configured.');
+  await setDoc(doc(db, 'users', uid), { uid, ...updatedData }, { merge: true });
 
   // 2. Update AsyncStorage cache
   const rawCache = await AsyncStorage.getItem(PROFILES_STORAGE_KEY);
   const profiles = rawCache ? JSON.parse(rawCache) : {};
   const currentProfile = profiles[uid] || { uid };
-  const mergedProfile = { ...currentProfile, ...updatedData };
+  const mergedProfile = { ...currentProfile, ...updateFields, uid, updatedAt: new Date().toISOString() };
   profiles[uid] = mergedProfile;
   await AsyncStorage.setItem(PROFILES_STORAGE_KEY, JSON.stringify(profiles));
 
@@ -164,3 +124,20 @@ export const pickProfileImage = async (uid) => {
 export const resetProfileImageToDefault = async (uid) => {
   return await updateUserProfile(uid, { photoURL: null });
 };
+
+/**
+ * Fetches all registered user profiles (For Admin Role Management)
+ */
+export const getAllUserProfiles = async () => {
+  if (!db) throw new Error('Firebase database is not configured.');
+  const snap = await getDocs(collection(db, 'users'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+/**
+ * Reassigns user role (Admin capability)
+ */
+export const updateUserRole = async (targetUid, newRole) => {
+  return await updateUserProfile(targetUid, { role: newRole });
+};
+

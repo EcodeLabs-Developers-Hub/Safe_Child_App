@@ -18,7 +18,13 @@ import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { subscribeIpBlocks, addIpBlockRecord, removeIpBlockRecord } from '../../services/dataService';
+import { firebaseConfig } from '../../config/firebase';
+import {
+  subscribeIpBlocks,
+  addIpBlockRecord,
+  removeIpBlockRecord
+} from '../../services/dataService';
+import { getAllUserProfiles, updateUserRole } from '../../services/profileService';
 
 export const ProfileScreen = () => {
   const { 
@@ -27,7 +33,8 @@ export const ProfileScreen = () => {
     editProfile, 
     uploadAvatar, 
     resetAvatar, 
-    logout 
+    logout,
+    sendVerificationEmail
   } = useAuth();
 
   const [displayName, setDisplayName] = useState('');
@@ -36,10 +43,16 @@ export const ProfileScreen = () => {
   const [loading, setLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [verificationLoading, setVerificationLoading] = useState(false);
 
-  // Compliance & Network Security Modal State
+  // Compliance, Network Security & Role Management State
   const [ipModalVisible, setIpModalVisible] = useState(false);
   const [dataRequestModalVisible, setDataRequestModalVisible] = useState(false);
+  const [roleModalVisible, setRoleModalVisible] = useState(false);
+  const [userList, setUserList] = useState([]);
+  const [roleSearchQuery, setRoleSearchQuery] = useState('');
+  const [roleLoadingUid, setRoleLoadingUid] = useState(null);
 
   // GDPR Consent Toggles State
   const [analyticsConsent, setAnalyticsConsent] = useState(true);
@@ -86,7 +99,10 @@ export const ProfileScreen = () => {
       setTimeout(() => setSaveSuccess(false), 3000);
       Alert.alert('Firebase Updated', 'Your profile details and changes have been saved to Firebase Firestore!');
     } catch (err) {
-      Alert.alert('Save Failed', err.message || 'Could not update profile.');
+      Alert.alert(
+        'Save Failed',
+        `${err.message || 'Could not update profile.'}${err.code ? `\n\nFirebase code: ${err.code}` : ''}`
+      );
     } finally {
       setLoading(false);
     }
@@ -153,34 +169,78 @@ export const ProfileScreen = () => {
   };
 
   const handleRemoveIpBlock = async (id) => {
-    await removeIpBlockRecord(id);
-    Alert.alert('Rule Removed', 'IP Block rule removed from Firebase.');
+    try {
+      await removeIpBlockRecord(id);
+      Alert.alert('Rule Removed', 'IP Block rule removed from Firebase.');
+    } catch (err) {
+      Alert.alert('Unable to remove rule', err.message || 'Please check your connection and try again.');
+    }
   };
 
   const handleSubmitDataRequest = () => {
-    Alert.alert(
-      'GDPR Data Request Submitted',
-      `Your request for [${requestType === 'access' ? 'Full Personal Data Export' : 'Account & Data Deletion'}] has been saved. Reference ID: GDR_${Date.now().toString().slice(-6)}`,
-      [{ text: 'OK', onPress: () => setDataRequestModalVisible(false) }]
-    );
+    Alert.alert('Request Unavailable', 'No existing Firebase collection is configured for GDPR requests.');
   };
 
-  const handleSignOut = () => {
-    Alert.alert(
-      'Sign Out',
-      'Are you sure you want to sign out of Safe Child?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Sign Out', 
-          style: 'destructive',
-          onPress: () => logout()
-        }
-      ]
-    );
+  const handleOpenRoleModal = async () => {
+    try {
+      setRoleModalVisible(true);
+      setRoleSearchQuery('');
+      const profiles = await getAllUserProfiles();
+      setUserList(profiles);
+    } catch (err) {
+      setRoleModalVisible(false);
+      Alert.alert('Unable to load users', err.message || 'Only administrators can manage roles.');
+    }
   };
 
-  const roleText = userProfile?.role ? userProfile.role.replace('_', ' ').toUpperCase() : 'PARENT';
+  const handleChangeUserRole = async (targetUid, newRole) => {
+    try {
+      setRoleLoadingUid(targetUid);
+      await updateUserRole(targetUid, newRole);
+      const updatedList = await getAllUserProfiles();
+      setUserList(updatedList);
+      Alert.alert('Role Updated', `User role updated to ${newRole.toUpperCase()} in Firebase Firestore.`);
+    } catch (err) {
+      Alert.alert('Role Update Error', err.message);
+    } finally {
+      setRoleLoadingUid(null);
+    }
+  };
+
+  const filteredRoleUsers = userList.filter((profile) => {
+    const query = roleSearchQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [profile.displayName, profile.email, profile.role]
+      .some((value) => (value || '').toLowerCase().includes(query));
+  });
+
+  const handleSignOut = async () => {
+    if (loggingOut) return;
+    try {
+      setLoggingOut(true);
+      await logout();
+    } catch (err) {
+      Alert.alert('Unable to sign out', err.message || 'Please check your connection and try again.');
+      setLoggingOut(false);
+    }
+  };
+
+  const handleSendVerification = async () => {
+    try {
+      setVerificationLoading(true);
+      const sent = await sendVerificationEmail();
+      Alert.alert(
+        sent ? 'Verification Email Sent' : 'Email Already Verified',
+        sent ? 'Check your inbox and spam folder for the Firebase verification link.' : 'This account is already verified.'
+      );
+    } catch (err) {
+      Alert.alert('Verification Email Failed', err.message || 'Unable to send the verification email.');
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
+  const roleText = userProfile?.role ? userProfile.role.replace('_', ' ').toUpperCase() : 'PROFILE NOT FOUND';
   const isAdmin = userProfile?.role === 'admin';
 
   return (
@@ -202,6 +262,19 @@ export const ProfileScreen = () => {
 
           <Text style={styles.profileName}>{userProfile?.displayName || 'Safe Child Member'}</Text>
           <Text style={styles.profileEmail}>{user?.email || userProfile?.email}</Text>
+          <Text style={styles.verificationStatus}>
+            {user?.emailVerified ? 'Email verified' : 'Email not verified'}
+          </Text>
+          {!user?.emailVerified && (
+            <Button
+              title="Send Verification Email"
+              onPress={handleSendVerification}
+              loading={verificationLoading}
+              variant="outline"
+              iconName="mail-outline"
+              style={{ marginTop: SPACING.xs }}
+            />
+          )}
 
           {/* Role Badge */}
           <View style={styles.roleBadgeContainer}>
@@ -278,6 +351,23 @@ export const ProfileScreen = () => {
           />
         </Card>
 
+        {/* Admin Role Management (RBAC) */}
+        {isAdmin && (
+          <Card title="Role-Based Access Control (Admin)" subtitle="Assign and manage user roles in Firebase database">
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Role Assignment:</Text>
+              <Text style={styles.infoValue}>Admin Privilege Active</Text>
+            </View>
+
+            <Button
+              title="Assign User Account Roles"
+              onPress={handleOpenRoleModal}
+              iconName="people-outline"
+              style={{ marginTop: SPACING.sm }}
+            />
+          </Card>
+        )}
+
         {/* Network Security Controls (For Admins) */}
         {isAdmin && (
           <Card title="Network Access & IP Controls (Firebase)" subtitle="Manage campus whitelists & firewall IP blocks">
@@ -338,6 +428,10 @@ export const ProfileScreen = () => {
             <Text style={styles.infoValue} numberOfLines={1}>{user?.uid || userProfile?.uid || 'N/A'}</Text>
           </View>
           <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Firebase Project:</Text>
+            <Text style={styles.infoValue} numberOfLines={1}>{firebaseConfig.projectId}</Text>
+          </View>
+          <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Account Status:</Text>
             <View style={styles.activeTag}>
               <Text style={styles.activeTagText}>Active Verified</Text>
@@ -353,6 +447,7 @@ export const ProfileScreen = () => {
         <Button
           title="Sign Out of Safe Child"
           onPress={handleSignOut}
+          loading={loggingOut}
           variant="danger"
           iconName="log-out-outline"
           style={{ marginVertical: SPACING.md }}
@@ -466,6 +561,73 @@ export const ProfileScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Admin User Role Assignment Modal */}
+      <Modal visible={roleModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>User Role Assignment (RBAC)</Text>
+              <TouchableOpacity onPress={() => setRoleModalVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.instructionText}>
+              Select a user account to re-assign system role and permissions. Default role is Parent.
+            </Text>
+
+            <InputField
+              placeholder="Search users by name, email, or role..."
+              value={roleSearchQuery}
+              onChangeText={setRoleSearchQuery}
+              iconName="search-outline"
+              style={styles.roleSearchInput}
+            />
+
+            <ScrollView keyboardShouldPersistTaps="handled">
+              {filteredRoleUsers.length === 0 ? (
+                <Text style={styles.noRoleUsersText}>No user accounts match this search.</Text>
+              ) : filteredRoleUsers.map((u) => {
+                const uid = u.id || u.uid;
+                const currentRole = u.role || 'parent';
+                return (
+                  <View key={uid} style={styles.userRoleCard}>
+                    <View style={styles.userRoleHeader}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.userRoleName}>{u.displayName || 'Unnamed User'}</Text>
+                        <Text style={styles.userRoleEmail}>{u.email}</Text>
+                      </View>
+                      <View style={styles.currentRoleBadge}>
+                        <Text style={styles.currentRoleBadgeText}>{currentRole.toUpperCase()}</Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.assignLabel}>Assign Role:</Text>
+                    <View style={styles.roleChipRow}>
+                      {['parent', 'teacher', 'pickup_verifier', 'security', 'admin'].map((r) => {
+                        const isCurrent = currentRole === r;
+                        return (
+                          <TouchableOpacity
+                            key={r}
+                            style={[styles.roleSelectChip, isCurrent && styles.roleSelectChipActive]}
+                            onPress={() => handleChangeUserRole(uid, r)}
+                            disabled={roleLoadingUid === uid}
+                          >
+                            <Text style={[styles.roleSelectText, isCurrent && styles.roleSelectTextActive]}>
+                              {r === 'pickup_verifier' ? 'Verifier' : r.charAt(0).toUpperCase() + r.slice(1)}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 };
@@ -500,6 +662,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textMuted,
     marginTop: 2,
+  },
+  verificationStatus: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 4,
   },
   roleBadgeContainer: {
     flexDirection: 'row',
@@ -698,6 +865,82 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   reqTypeChipTextActive: {
+    color: COLORS.white,
+    fontWeight: '700',
+  },
+  userRoleCard: {
+    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceBorder,
+  },
+  roleSearchInput: {
+    marginBottom: SPACING.sm,
+  },
+  noRoleUsersText: {
+    color: COLORS.textMuted,
+    textAlign: 'center',
+    paddingVertical: SPACING.lg,
+  },
+  userRoleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.xs,
+  },
+  userRoleName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.primaryNavy,
+  },
+  userRoleEmail: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginTop: 2,
+  },
+  currentRoleBadge: {
+    backgroundColor: COLORS.safetyBlueLight,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: RADIUS.full,
+  },
+  currentRoleBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: COLORS.safetyBlue,
+  },
+  assignLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  roleChipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  roleSelectChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: RADIUS.sm,
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.surfaceBorder,
+  },
+  roleSelectChipActive: {
+    backgroundColor: COLORS.safetyBlue,
+    borderColor: COLORS.safetyBlue,
+  },
+  roleSelectText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  roleSelectTextActive: {
     color: COLORS.white,
     fontWeight: '700',
   },

@@ -20,12 +20,13 @@ import {
   subscribePtaMeetings, 
   addPtaMeetingRecord, 
   updatePtaRsvpRecord, 
-  subscribeAnnouncements 
+  subscribeAnnouncements,
+  publishAnnouncementRecord
 } from '../../services/dataService';
 
 export const CampusOperationsScreen = () => {
   const { userProfile } = useAuth();
-  const userRole = userProfile?.role || 'parent';
+  const userRole = userProfile?.role || null;
 
   const [activeTab, setActiveTab] = useState('bus'); // 'bus' | 'pta' | 'announcements'
   const [busRoutes, setBusRoutes] = useState([]);
@@ -46,6 +47,12 @@ export const CampusOperationsScreen = () => {
   const [ptaDate, setPtaDate] = useState('');
   const [ptaLocation, setPtaLocation] = useState('');
   const [ptaAgenda, setPtaAgenda] = useState('');
+
+  // Announcement Modal State (Figure 4.16)
+  const [annModalVisible, setAnnModalVisible] = useState(false);
+  const [annTitle, setAnnTitle] = useState('');
+  const [annBody, setAnnBody] = useState('');
+  const [annCategory, setAnnCategory] = useState('Urgent');
 
   // Live Firebase Subscriptions
   useEffect(() => {
@@ -69,11 +76,11 @@ export const CampusOperationsScreen = () => {
       const newRoute = {
         routeNumber: routeNumber.trim(),
         driverName: driverName.trim(),
-        driverPhone: driverPhone.trim() || '+233 24 000 0000',
-        departureTime: departureTime.trim() || '07:00 AM',
-        arrivalTime: arrivalTime.trim() || '07:45 AM',
+        driverPhone: driverPhone.trim(),
+        departureTime: departureTime.trim(),
+        arrivalTime: arrivalTime.trim(),
         status: 'On Time',
-        notes: 'New active route added.'
+        notes: ''
       };
 
       await addBusScheduleRecord(newRoute);
@@ -97,8 +104,8 @@ export const CampusOperationsScreen = () => {
       const newMeeting = {
         title: ptaTitle.trim(),
         date: ptaDate.trim(),
-        location: ptaLocation.trim() || 'Main Campus Auditorium',
-        agenda: ptaAgenda.trim() || 'General community discussion.',
+        location: ptaLocation.trim(),
+        agenda: ptaAgenda.trim(),
         rsvpStatus: 'Going'
       };
 
@@ -114,8 +121,37 @@ export const CampusOperationsScreen = () => {
     }
   };
 
+  const handlePublishAnnouncement = async () => {
+    if (!annTitle.trim() || !annBody.trim()) {
+      Alert.alert('Required Fields', 'Please enter announcement title and body message.');
+      return;
+    }
+
+    try {
+      const newAnn = {
+        title: annTitle.trim(),
+        body: annBody.trim(),
+        category: annCategory,
+        date: new Date().toISOString(),
+        createdAt: new Date().toISOString()
+      };
+
+      await publishAnnouncementRecord(newAnn);
+      setAnnModalVisible(false);
+      setAnnTitle('');
+      setAnnBody('');
+      Alert.alert('Saved to Firebase', 'School announcement published to Firebase and active for all mobile users.');
+    } catch (err) {
+      Alert.alert('Publish Error', err.message);
+    }
+  };
+
   const toggleRsvp = async (meetingId, newStatus) => {
-    await updatePtaRsvpRecord(meetingId, newStatus);
+    try {
+      await updatePtaRsvpRecord(meetingId, newStatus);
+    } catch (err) {
+      Alert.alert('Unable to update RSVP', err.message || 'Please check your connection and try again.');
+    }
   };
 
   const getStatusBadgeColor = (st) => {
@@ -270,9 +306,18 @@ export const CampusOperationsScreen = () => {
           </View>
         )}
 
-        {/* TAB 3: SCHOOL BULLETINS */}
+        {/* TAB 3: SCHOOL BULLETINS (Figure 4.16: Creation and Display of Announcement) */}
         {activeTab === 'announcements' && (
           <View>
+            {(userRole === 'admin' || userRole === 'teacher') && (
+              <Button
+                title="Publish School Announcement (Figure 4.16)"
+                onPress={() => setAnnModalVisible(true)}
+                iconName="megaphone-outline"
+                style={{ marginBottom: SPACING.md }}
+              />
+            )}
+
             {announcements.map((item) => (
               <Card 
                 key={item.id} 
@@ -404,6 +449,60 @@ export const CampusOperationsScreen = () => {
               title="Broadcast PTA Schedule to Firebase"
               onPress={handleAddPtaMeeting}
               iconName="checkmark-circle-outline"
+              style={{ marginTop: SPACING.sm }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Figure 4.16: Administrator Announcement Creation Modal */}
+      <Modal visible={annModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Publish School Announcement (Admin)</Text>
+              <TouchableOpacity onPress={() => setAnnModalVisible(false)}>
+                <Ionicons name="close" size={24} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <InputField
+              label="Announcement Title"
+              value={annTitle}
+              onChangeText={setAnnTitle}
+              placeholder="e.g. Mandatory Gate Photo Verification System"
+              iconName="megaphone-outline"
+            />
+
+            <InputField
+              label="Announcement Body Content"
+              value={annBody}
+              onChangeText={setAnnBody}
+              placeholder="Enter announcement text for mobile users..."
+              iconName="document-text-outline"
+              multiline={true}
+              numberOfLines={4}
+            />
+
+            <Text style={styles.rsvpLabel}>Category:</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: SPACING.md }}>
+              {['Urgent', 'Events', 'Academic'].map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.rsvpChip, annCategory === cat && styles.rsvpChipActive]}
+                  onPress={() => setAnnCategory(cat)}
+                >
+                  <Text style={[styles.rsvpChipText, annCategory === cat && styles.rsvpChipTextActive]}>
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Button
+              title="Publish Notice to Parent Users"
+              onPress={handlePublishAnnouncement}
+              iconName="paper-plane-outline"
               style={{ marginTop: SPACING.sm }}
             />
           </View>

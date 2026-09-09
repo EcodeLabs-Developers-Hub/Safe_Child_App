@@ -16,7 +16,8 @@
       "bundleIdentifier": "com.educal.safechild",
       "infoPlist": {
         "NSCameraUsageDescription": "Safe Child needs camera access to allow profile avatar and pickup photo verification uploads.",
-        "NSPhotoLibraryUsageDescription": "Safe Child needs access to photo library for profile avatar and pickup document uploads."
+        "NSPhotoLibraryUsageDescription": "Safe Child needs access to photo library for profile avatar and pickup document uploads.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {

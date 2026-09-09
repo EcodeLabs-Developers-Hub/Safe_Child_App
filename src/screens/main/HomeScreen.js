@@ -6,30 +6,46 @@ import { Avatar } from '../../components/common/Avatar';
 import { Button } from '../../components/common/Button';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { subscribeStudents, subscribeAttendance, getConnectedChildren } from '../../services/dataService';
+import {
+  subscribeStudentsForUser,
+  subscribeAttendance,
+  subscribePickups,
+  subscribeAlerts,
+  subscribeAnnouncements,
+  getConnectedChildren
+} from '../../services/dataService';
 
 export const HomeScreen = ({ navigation }) => {
   const { userProfile } = useAuth();
   const userName = userProfile?.displayName || 'Campus Member';
-  const userRole = userProfile?.role || 'parent';
+  const userRole = userProfile?.role || null;
 
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState([]);
+  const [pickups, setPickups] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [announcements, setAnnouncements] = useState([]);
   const [selectedChild, setSelectedChild] = useState(null);
 
   // Live Firebase Subscriptions
   useEffect(() => {
-    const unsubStudents = subscribeStudents((liveStudents) => {
+    const unsubStudents = subscribeStudentsForUser((liveStudents) => {
       setStudents(liveStudents);
-    });
+    }, userProfile);
     const unsubAttendance = subscribeAttendance((liveAttendance) => {
       setAttendance(liveAttendance);
-    });
+    }, userProfile);
+    const unsubPickups = subscribePickups(setPickups, userProfile);
+    const unsubAlerts = subscribeAlerts(setAlerts);
+    const unsubAnnouncements = subscribeAnnouncements(setAnnouncements);
     return () => {
       unsubStudents();
       unsubAttendance();
+      unsubPickups();
+      unsubAlerts();
+      unsubAnnouncements();
     };
-  }, []);
+  }, [userProfile]);
 
   // Filter children connected to logged-in user
   const connectedChildren = getConnectedChildren(students, userProfile);
@@ -37,7 +53,7 @@ export const HomeScreen = ({ navigation }) => {
   // Helper to get student's live attendance status for today
   const getStudentAttendance = (studentName) => {
     const record = attendance.find(a => (a.name || '').toLowerCase() === studentName.toLowerCase());
-    return record ? record.status : 'Present';
+    return record ? record.status : 'Unknown';
   };
 
   const getAttendanceBadgeStyle = (status) => {
@@ -55,7 +71,8 @@ export const HomeScreen = ({ navigation }) => {
       case 'teacher': return 'FACULTY & CLASS TEACHER';
       case 'pickup_verifier': return 'GATE VERIFICATION OFFICER';
       case 'security': return 'CAMPUS SECURITY COMMAND';
-      case 'parent': default: return 'PARENT & GUARDIAN';
+      case 'parent': return 'PARENT & GUARDIAN';
+      default: return 'ACCOUNT';
     }
   };
 
@@ -80,7 +97,7 @@ export const HomeScreen = ({ navigation }) => {
       {/* Connected Children Section (Primary view for parents) */}
       <View style={styles.sectionHeaderRow}>
         <Text style={styles.sectionTitle}>
-          {userRole === 'parent' ? 'My Connected Children' : 'Connected Wards & Roster'}
+          {userRole === 'parent' ? 'My Connected Children' : userRole ? 'Connected Wards & Roster' : 'Account profile unavailable'}
         </Text>
         <TouchableOpacity onPress={() => navigation.navigate('StudentsTab')}>
           <Text style={styles.viewAllText}>Manage ({connectedChildren.length})</Text>
@@ -239,17 +256,17 @@ export const HomeScreen = ({ navigation }) => {
       <Text style={styles.sectionTitle}>Campus Live Status</Text>
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={styles.statNumber}>142</Text>
+          <Text style={styles.statNumber}>{attendance.filter((item) => item.status === 'Present').length}</Text>
           <Text style={styles.statLabel}>Students Present</Text>
           <View style={styles.statIndicatorGood} />
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statNumber}>18</Text>
+          <Text style={styles.statNumber}>{pickups.filter((item) => item.status === 'Pending' || item.status === 'Approved').length}</Text>
           <Text style={styles.statLabel}>Active Pickups</Text>
           <View style={styles.statIndicatorWarn} />
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statNumber}>0</Text>
+          <Text style={styles.statNumber}>{alerts.filter((item) => item.status !== 'Resolved').length}</Text>
           <Text style={styles.statLabel}>Unresolved Alerts</Text>
           <View style={styles.statIndicatorSafe} />
         </View>
@@ -264,26 +281,18 @@ export const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         }
       >
-        <View style={styles.announcementItem}>
-          <View style={styles.bulletDot} />
-          <View style={styles.announcementContent}>
-            <Text style={styles.announcementTitle}>End of Term Gate Verification Protocol</Text>
-            <Text style={styles.announcementBody}>
-              Gate verification will commence strictly at 2:30 PM. All guardians are advised to keep recipient photo proofs updated.
-            </Text>
-            <Text style={styles.announcementTime}>2 hours ago • Campus Admin</Text>
+        {announcements.length === 0 ? (
+          <Text style={styles.emptyChildSub}>No announcements found.</Text>
+        ) : announcements.slice(0, 2).map((announcement) => (
+          <View style={styles.announcementItem} key={announcement.id}>
+            <View style={styles.bulletDot} />
+            <View style={styles.announcementContent}>
+              <Text style={styles.announcementTitle}>{announcement.title}</Text>
+              <Text style={styles.announcementBody}>{announcement.body}</Text>
+              <Text style={styles.announcementTime}>{announcement.date}</Text>
+            </View>
           </View>
-        </View>
-        <View style={styles.announcementItem}>
-          <View style={styles.bulletDot} />
-          <View style={styles.announcementContent}>
-            <Text style={styles.announcementTitle}>PTA Executive Community Meeting</Text>
-            <Text style={styles.announcementBody}>
-              Scheduled for Friday 4:00 PM at the Main Assembly Auditorium & Zoom.
-            </Text>
-            <Text style={styles.announcementTime}>Yesterday • PTA Board</Text>
-          </View>
-        </View>
+        ))}
       </Card>
 
       {/* Child Detail Modal */}
@@ -335,7 +344,7 @@ export const HomeScreen = ({ navigation }) => {
                     <View style={styles.detailItemText}>
                       <Text style={styles.detailItemLabel}>Attendance Rate</Text>
                       <Text style={[styles.detailItemVal, { color: COLORS.success, fontWeight: '800' }]}>
-                        {selectedChild.attendanceRate || '98%'}
+                        {selectedChild.attendanceRate || 'Not available'}
                       </Text>
                     </View>
                   </View>

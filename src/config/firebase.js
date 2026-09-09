@@ -3,7 +3,6 @@ import { initializeAuth, getAuth, getReactNativePersistence } from 'firebase/aut
 import { getFirestore } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Replace with your actual Firebase Project Config from Firebase Console
 const firebaseConfig = {
   apiKey: "AIzaSyDH5uckDVSQTknkAx35eCJ7YFodDPXeM4g",
   authDomain: "safe-child-app-2a1d0.firebaseapp.com",
@@ -15,42 +14,23 @@ const firebaseConfig = {
   measurementId: "G-C539EB8BGX"
 };
 
-// Initialize Firebase App singleton safely
-let app;
-if (!getApps().length) {
-  try {
-    app = initializeApp(firebaseConfig);
-  } catch (err) {
-    console.warn("Firebase initialization warning:", err.message);
-  }
-} else {
-  app = getApp();
-}
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 // Initialize Firebase Auth with React Native AsyncStorage persistence
 let auth;
 try {
-  if (app) {
-    auth = getAuth(app);
-  }
+  auth = initializeAuth(app, {
+    persistence: getReactNativePersistence(AsyncStorage)
+  });
 } catch (e) {
   try {
-    auth = initializeAuth(app, {
-      persistence: getReactNativePersistence(AsyncStorage)
-    });
+    auth = getAuth(app);
   } catch (authErr) {
-    console.warn("Auth initialization fallback:", authErr);
+    console.error('Firebase Auth initialization failed:', authErr);
+    throw authErr;
   }
 }
 
-// Initialize Firestore Database
-let db = null;
-if (app) {
-  try {
-    db = getFirestore(app);
-  } catch (dbErr) {
-    console.warn("Firestore initialization fallback:", dbErr);
-  }
-}
+const db = getFirestore(app);
 
-export { app, auth, db };
+export { app, auth, db, firebaseConfig };
