@@ -15,6 +15,8 @@ import { InputField } from '../../components/common/InputField';
 import { Button } from '../../components/common/Button';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { storage, auth } from '../../config/firebase';
 import * as ImagePicker from 'expo-image-picker';
 import { 
   subscribePickups, 
@@ -46,6 +48,7 @@ export const PickupsScreen = ({ route }) => {
   const [pickupPhone, setPickupPhone] = useState('');
   const [notes, setNotes] = useState('');
   const [proofImageUri, setProofImageUri] = useState(null);
+  const [proofViewerUri, setProofViewerUri] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Gate PIN Verifier Tool State
@@ -131,6 +134,14 @@ export const PickupsScreen = ({ route }) => {
 
     setLoading(true);
     try {
+      let proofUrl = null;
+      if (proofImageUri) {
+        const response = await fetch(proofImageUri);
+        const blob = await response.blob();
+        const proofRef = ref(storage, `pickup_proofs/${auth.currentUser.uid}/${Date.now()}.jpg`);
+        await uploadBytes(proofRef, blob, { contentType: 'image/jpeg' });
+        proofUrl = await getDownloadURL(proofRef);
+      }
       const newReqData = {
         studentName: selectedChildren.map((child) => `${child.firstName} ${child.lastName}`).join(', '),
         studentIds: selectedChildren.map((child) => child.id),
@@ -140,7 +151,7 @@ export const PickupsScreen = ({ route }) => {
         status: 'Pending',
         time: 'Today (Pending Approval)',
         notes: notes.trim(),
-        imageUri: proofImageUri,
+        imageUri: proofUrl,
         createdAt: new Date().toISOString()
       };
 
@@ -367,7 +378,9 @@ export const PickupsScreen = ({ route }) => {
                 {item.imageUri && (
                   <View style={styles.proofPreviewBox}>
                     <Text style={styles.proofLabel}>Attached Recipient Photo Proof:</Text>
-                    <Image source={{ uri: item.imageUri }} style={styles.proofThumb} />
+                    <TouchableOpacity onPress={() => setProofViewerUri(item.imageUri)}>
+                      <Image source={{ uri: item.imageUri }} style={styles.proofThumb} />
+                    </TouchableOpacity>
                   </View>
                 )}
 
@@ -448,7 +461,9 @@ export const PickupsScreen = ({ route }) => {
                 {matchedRequest.imageUri && (
                   <View style={styles.proofPreviewBox}>
                     <Text style={styles.proofLabel}>Verified Recipient Photo Proof:</Text>
-                    <Image source={{ uri: matchedRequest.imageUri }} style={styles.proofThumb} />
+                    <TouchableOpacity onPress={() => setProofViewerUri(matchedRequest.imageUri)}>
+                      <Image source={{ uri: matchedRequest.imageUri }} style={styles.proofThumb} />
+                    </TouchableOpacity>
                   </View>
                 )}
 
@@ -684,6 +699,15 @@ export const PickupsScreen = ({ route }) => {
         </View>
       </Modal>
 
+      <Modal visible={!!proofViewerUri} animationType="fade" transparent={true} onRequestClose={() => setProofViewerUri(null)}>
+        <View style={styles.proofViewerOverlay}>
+          <TouchableOpacity style={styles.proofViewerClose} onPress={() => setProofViewerUri(null)}>
+            <Ionicons name="close" size={28} color={COLORS.white} />
+          </TouchableOpacity>
+          {proofViewerUri && <Image source={{ uri: proofViewerUri }} style={styles.proofViewerImage} resizeMode="contain" />}
+        </View>
+      </Modal>
+
       {/* Pre-Authorized Contact Modal */}
       <Modal visible={contactModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
@@ -854,6 +878,24 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 8,
+  },
+  proofViewerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.md,
+  },
+  proofViewerImage: {
+    width: '100%',
+    height: '80%',
+  },
+  proofViewerClose: {
+    position: 'absolute',
+    top: 48,
+    right: 20,
+    zIndex: 1,
+    padding: SPACING.xs,
   },
   actionRow: {
     flexDirection: 'row',

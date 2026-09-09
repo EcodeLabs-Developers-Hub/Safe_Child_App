@@ -20,6 +20,10 @@ service cloud.firestore {
       return isAdmin() || hasRole('teacher') || hasRole('security') || hasRole('pickup_verifier');
     }
 
+    function isStudentManager() {
+      return isAdmin() || hasRole('teacher');
+    }
+
     match /users/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
       allow create: if signedIn() && request.auth.uid == userId;
@@ -36,12 +40,12 @@ service cloud.firestore {
           && resource.data.classId != null
           && get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.teacherEmail == request.auth.token.email)
         || (hasRole('parent') && resource.data.guardianEmail == request.auth.token.email);
-      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+      allow create: if isStudentManager() && request.resource.data.createdByUid == request.auth.uid;
       allow update: if isAdmin()
         || (hasRole('teacher')
           && resource.data.classId != null
           && get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.teacherEmail == request.auth.token.email)
-        || (signedIn() && resource.data.createdByUid == request.auth.uid);
+        || (isStudentManager() && resource.data.createdByUid == request.auth.uid);
       allow delete: if isAdmin();
     }
 

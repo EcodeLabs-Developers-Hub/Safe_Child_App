@@ -85,6 +85,7 @@ export const AttendanceScreen = () => {
   };
 
   const handleSaveNote = async () => {
+    if (userProfile?.role === 'parent') return;
     if (activeNoteStudent) {
       await updateAttendanceRecord(activeNoteStudent, activeNoteStudent.status, noteText.trim(), toDateKey(selectedDate));
       setActiveNoteStudent(null);
@@ -287,16 +288,18 @@ export const AttendanceScreen = () => {
                   <Text style={styles.studentName}>{student.name}</Text>
                   <Text style={styles.studentSub}>{student.grade} • Guardian: {student.guardian}</Text>
                 </View>
-                <TouchableOpacity 
-                  style={styles.noteIconBtn}
-                  onPress={() => handleOpenNoteModal(student)}
-                >
-                  <Ionicons 
-                    name={student.note ? "document-text" : "document-text-outline"} 
-                    size={20} 
-                    color={student.note ? COLORS.safetyBlue : COLORS.textMuted} 
-                  />
-                </TouchableOpacity>
+                {userProfile?.role !== 'parent' && (
+                  <TouchableOpacity
+                    style={styles.noteIconBtn}
+                    onPress={() => handleOpenNoteModal(student)}
+                  >
+                    <Ionicons
+                      name={student.note ? "document-text" : "document-text-outline"}
+                      size={20}
+                      color={student.note ? COLORS.safetyBlue : COLORS.textMuted}
+                    />
+                  </TouchableOpacity>
+                )}
               </View>
 
               {student.note ? (
@@ -360,7 +363,7 @@ export const AttendanceScreen = () => {
       </Modal>
 
       {/* Teacher Note Modal */}
-      <Modal visible={!!activeNoteStudent} animationType="slide" transparent={true}>
+      <Modal visible={userProfile?.role !== 'parent' && !!activeNoteStudent} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>

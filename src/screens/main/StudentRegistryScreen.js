@@ -334,7 +334,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
             <Text style={styles.pageTitle}>Student Registry</Text>
             <Text style={styles.pageSubtitle}>Official Educal Complex student roster (Firebase Sync)</Text>
           </View>
-          {(userRole === 'admin' || userRole === 'teacher' || userRole === 'parent') && (
+          {(userRole === 'admin' || userRole === 'teacher') && (
             <TouchableOpacity 
               style={styles.addBtn}
               onPress={handleOpenAddModal}

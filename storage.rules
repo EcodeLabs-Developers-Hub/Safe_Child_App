@@ -7,12 +7,21 @@ service firebase.storage {
       return signedIn()
         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
+    function isStaff() {
+      return signedIn()
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'teacher', 'security', 'pickup_verifier'];
+    }
 
     // Existing mobile uploads are readable only to staff/admin. New admin uploads
     // use the admin/ prefix and remain restricted by the same role check.
     match /{allPaths=**} {
-      allow read: if isAdmin();
-      allow write: if isAdmin()
+      allow read: if isStaff()
+        || (signedIn() && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'parent'
+          && allPaths.matches('pickup_proofs/' + request.auth.uid + '/.*'));
+      allow write: if (isAdmin()
+        || (signedIn()
+          && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'parent'
+          && allPaths.matches('pickup_proofs/' + request.auth.uid + '/.*')))
         && request.resource.size < 10 * 1024 * 1024
         && request.resource.contentType.matches('image/.*|application/pdf');
       allow delete: if isAdmin();
