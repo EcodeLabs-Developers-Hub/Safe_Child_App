@@ -40,7 +40,10 @@ service cloud.firestore {
 
     match /pickup_requests/{requestId} {
       allow read: if isStaff() || (hasRole('parent') && resource.data.createdByUid == request.auth.uid);
-      allow create: if signedIn() && request.resource.data.createdByUid == request.auth.uid;
+      allow create: if hasRole('parent')
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.studentIds is list
+        && request.resource.data.studentIds.size() > 0;
       allow update: if isStaff() || (hasRole('parent') && resource.data.createdByUid == request.auth.uid);
     }
 

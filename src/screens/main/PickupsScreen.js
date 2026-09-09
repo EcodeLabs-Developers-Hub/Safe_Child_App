@@ -41,7 +41,7 @@ export const PickupsScreen = ({ route }) => {
 
   // New Request Modal State
   const [modalVisible, setModalVisible] = useState(false);
-  const [studentName, setStudentName] = useState('');
+  const [selectedChildIds, setSelectedChildIds] = useState([]);
   const [pickupName, setPickupName] = useState('');
   const [pickupPhone, setPickupPhone] = useState('');
   const [notes, setNotes] = useState('');
@@ -83,13 +83,23 @@ export const PickupsScreen = ({ route }) => {
 
   // Handle incoming route params from child card shortcut
   useEffect(() => {
-    if (route?.params?.studentName) {
-      setStudentName(route.params.studentName);
+    if (route?.params?.studentId) {
+      setSelectedChildIds((currentIds) => currentIds.includes(route.params.studentId)
+        ? currentIds
+        : [...currentIds, route.params.studentId]);
       setModalVisible(true);
     }
-  }, [route?.params]);
+  }, [route?.params?.studentId]);
 
   const connectedChildren = getConnectedChildren(students, userProfile);
+  const canArrangePickup = userRole === 'parent' && connectedChildren.length > 0;
+  const selectedChildren = connectedChildren.filter((child) => selectedChildIds.includes(child.id));
+
+  const toggleChildSelection = (childId) => {
+    setSelectedChildIds((currentIds) => currentIds.includes(childId)
+      ? currentIds.filter((id) => id !== childId)
+      : [...currentIds, childId]);
+  };
 
   const handlePickProofImage = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -110,15 +120,21 @@ export const PickupsScreen = ({ route }) => {
   };
 
   const handleCreateRequest = async () => {
-    if (!studentName.trim() || !pickupName.trim()) {
-      Alert.alert('Missing Fields', 'Please enter student name and authorized pickup recipient name.');
+    if (!canArrangePickup) {
+      Alert.alert('Pickup unavailable', 'Only parent accounts with connected children can arrange pickups.');
+      return;
+    }
+    if (selectedChildren.length === 0 || !pickupName.trim()) {
+      Alert.alert('Missing Fields', 'Select at least one connected child and enter the authorized pickup recipient name.');
       return;
     }
 
     setLoading(true);
     try {
       const newReqData = {
-        studentName: studentName.trim(),
+        studentName: selectedChildren.map((child) => `${child.firstName} ${child.lastName}`).join(', '),
+        studentIds: selectedChildren.map((child) => child.id),
+        studentNames: selectedChildren.map((child) => `${child.firstName} ${child.lastName}`),
         pickupName: pickupName.trim(),
         pickupPhone: pickupPhone.trim(),
         status: 'Pending',
@@ -132,7 +148,7 @@ export const PickupsScreen = ({ route }) => {
       setModalVisible(false);
 
       // Reset form
-      setStudentName('');
+      setSelectedChildIds([]);
       setPickupName('');
       setPickupPhone('');
       setNotes('');
@@ -257,7 +273,10 @@ export const PickupsScreen = ({ route }) => {
           </View>
           <TouchableOpacity 
             style={styles.addBtn}
-            onPress={() => setModalVisible(true)}
+            onPress={() => {
+              if (canArrangePickup) setModalVisible(true);
+              else Alert.alert('Pickup unavailable', 'Only parent accounts with connected children can arrange pickups.');
+            }}
             activeOpacity={0.8}
           >
             <Ionicons name="add" size={20} color={COLORS.white} />
@@ -480,12 +499,14 @@ export const PickupsScreen = ({ route }) => {
                     iconName="refresh-outline"
                     style={styles.flexBtn}
                   />
-                  <Button
-                    title="Alert Security Command"
-                    onPress={() => navigation.navigate('SecurityTab')}
-                    iconName="shield-alert-outline"
-                    style={[styles.flexBtn, { backgroundColor: COLORS.danger }]}
-                  />
+                  {(userRole === 'admin' || userRole === 'security') && (
+                    <Button
+                      title="Alert Security Command"
+                      onPress={() => navigation.navigate('SecurityTab')}
+                      iconName="shield-alert-outline"
+                      style={[styles.flexBtn, { backgroundColor: COLORS.danger }]}
+                    />
+                  )}
                 </View>
               </Card>
             )}
@@ -552,7 +573,7 @@ export const PickupsScreen = ({ route }) => {
       </ScrollView>
 
       {/* New Pickup Request Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent={true}>
+      <Modal visible={modalVisible && canArrangePickup} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -571,7 +592,7 @@ export const PickupsScreen = ({ route }) => {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: 4 }}>
                     {connectedChildren.map(child => {
                       const label = `${child.firstName} ${child.lastName} (${child.grade})`;
-                      const selected = studentName === label;
+                      const selected = selectedChildIds.includes(child.id);
                       return (
                         <TouchableOpacity
                           key={child.id}
@@ -579,7 +600,7 @@ export const PickupsScreen = ({ route }) => {
                             styles.childPickChip,
                             selected && styles.childPickChipActive
                           ]}
-                          onPress={() => setStudentName(label)}
+                          onPress={() => toggleChildSelection(child.id)}
                           activeOpacity={0.8}
                         >
                           <Ionicons 
@@ -598,13 +619,16 @@ export const PickupsScreen = ({ route }) => {
                 </View>
               )}
 
-              <InputField
-                label="Student Name & Grade"
-                value={studentName}
-                onChangeText={setStudentName}
-                placeholder="e.g. Ethan Vance (Grade 4B)"
-                iconName="school-outline"
-              />
+              <View style={{ marginBottom: SPACING.sm }}>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: COLORS.textMuted, marginBottom: 6 }}>
+                  Selected Children ({selectedChildren.length})
+                </Text>
+                <Text style={{ color: selectedChildren.length ? COLORS.textPrimary : COLORS.textMuted }}>
+                  {selectedChildren.length
+                    ? selectedChildren.map((child) => `${child.firstName} ${child.lastName}`).join(', ')
+                    : 'Select one or more connected children above.'}
+                </Text>
+              </View>
 
               <InputField
                 label="Authorized Recipient Name"

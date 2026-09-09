@@ -10,10 +10,23 @@ import { SecurityScreen } from '../screens/main/SecurityScreen';
 import { ProfileScreen } from '../screens/main/ProfileScreen';
 import { Header } from '../components/common/Header';
 import { COLORS } from '../theme/theme';
+import { useAuth } from '../context/AuthContext';
 
 const Tab = createBottomTabNavigator();
 
 export const AppTabNavigator = () => {
+  const { userProfile } = useAuth();
+  const userRole = userProfile?.role || 'parent';
+  const visibleTabs = {
+    admin: ['HomeTab', 'StudentsTab', 'PickupsTab', 'AttendanceTab', 'OperationsTab', 'SecurityTab', 'ProfileTab'],
+    teacher: ['HomeTab', 'StudentsTab', 'PickupsTab', 'AttendanceTab', 'OperationsTab', 'ProfileTab'],
+    parent: ['HomeTab', 'StudentsTab', 'PickupsTab', 'ProfileTab'],
+    security: ['HomeTab', 'SecurityTab', 'ProfileTab'],
+    pickup_verifier: ['HomeTab', 'PickupsTab', 'ProfileTab'],
+  }[userRole] || ['HomeTab', 'ProfileTab'];
+
+  const isTabVisible = (tabName) => visibleTabs.includes(tabName);
+
   return (
     <Tab.Navigator
       screenOptions={({ route, navigation }) => ({
@@ -62,32 +75,32 @@ export const AppTabNavigator = () => {
       <Tab.Screen 
         name="StudentsTab" 
         component={StudentRegistryScreen} 
-        options={{ tabBarLabel: 'Students' }} 
+        options={{ tabBarLabel: 'Students', tabBarButton: isTabVisible('StudentsTab') ? undefined : () => null }}
       />
       <Tab.Screen 
         name="PickupsTab" 
         component={PickupsScreen} 
-        options={{ tabBarLabel: 'Pickups' }} 
+        options={{ tabBarLabel: 'Pickups', tabBarButton: isTabVisible('PickupsTab') ? undefined : () => null }}
       />
       <Tab.Screen 
         name="AttendanceTab" 
         component={AttendanceScreen} 
-        options={{ tabBarLabel: 'Attendance' }} 
+        options={{ tabBarLabel: 'Attendance', tabBarButton: isTabVisible('AttendanceTab') ? undefined : () => null }}
       />
       <Tab.Screen 
         name="OperationsTab" 
         component={CampusOperationsScreen} 
-        options={{ tabBarLabel: 'Ops' }} 
+        options={{ tabBarLabel: 'Ops', tabBarButton: isTabVisible('OperationsTab') ? undefined : () => null }}
       />
       <Tab.Screen 
         name="SecurityTab" 
         component={SecurityScreen} 
-        options={{ tabBarLabel: 'Security' }} 
+        options={{ tabBarLabel: 'Security', tabBarButton: isTabVisible('SecurityTab') ? undefined : () => null }}
       />
       <Tab.Screen 
         name="ProfileTab" 
         component={ProfileScreen} 
-        options={{ tabBarLabel: 'Profile' }} 
+        options={{ tabBarLabel: 'Profile', tabBarButton: isTabVisible('ProfileTab') ? undefined : () => null }}
       />
     </Tab.Navigator>
   );

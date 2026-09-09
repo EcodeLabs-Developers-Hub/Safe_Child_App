@@ -19,6 +19,14 @@ export const HomeScreen = ({ navigation }) => {
   const { userProfile } = useAuth();
   const userName = userProfile?.displayName || 'Campus Member';
   const userRole = userProfile?.role || null;
+  const visibleTabs = {
+    admin: ['StudentsTab', 'PickupsTab', 'AttendanceTab', 'OperationsTab', 'SecurityTab'],
+    teacher: ['StudentsTab', 'PickupsTab', 'AttendanceTab', 'OperationsTab'],
+    parent: ['StudentsTab', 'PickupsTab'],
+    security: ['SecurityTab'],
+    pickup_verifier: ['PickupsTab'],
+  }[userRole] || [];
+  const canSeeTab = (tabName) => visibleTabs.includes(tabName);
 
   const [students, setStudents] = useState([]);
   const [attendance, setAttendance] = useState([]);
@@ -99,9 +107,11 @@ export const HomeScreen = ({ navigation }) => {
         <Text style={styles.sectionTitle}>
           {userRole === 'parent' ? 'My Connected Children' : userRole ? 'Connected Wards & Roster' : 'Account profile unavailable'}
         </Text>
-        <TouchableOpacity onPress={() => navigation.navigate('StudentsTab')}>
-          <Text style={styles.viewAllText}>Manage ({connectedChildren.length})</Text>
-        </TouchableOpacity>
+        {canSeeTab('StudentsTab') && (
+          <TouchableOpacity onPress={() => navigation.navigate('StudentsTab')}>
+            <Text style={styles.viewAllText}>Manage ({connectedChildren.length})</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {connectedChildren.length === 0 ? (
@@ -117,13 +127,15 @@ export const HomeScreen = ({ navigation }) => {
               </Text>
             </View>
           </View>
-          <Button 
-            title="Register / Link Child" 
-            onPress={() => navigation.navigate('StudentsTab')}
-            variant="secondary"
-            iconName="person-add-outline"
-            style={{ marginTop: SPACING.xs }}
-          />
+          {canSeeTab('StudentsTab') && (
+            <Button
+              title="Register / Link Child"
+              onPress={() => navigation.navigate('StudentsTab')}
+              variant="secondary"
+              iconName="person-add-outline"
+              style={{ marginTop: SPACING.xs }}
+            />
+          )}
         </Card>
       ) : (
         <View style={styles.childrenListContainer}>
@@ -154,7 +166,7 @@ export const HomeScreen = ({ navigation }) => {
                 <View style={styles.childActionRow}>
                   <TouchableOpacity 
                     style={styles.childPrimaryBtn}
-                    onPress={() => navigation.navigate('PickupsTab', { studentName: `${childFullName} (${child.grade})` })}
+                    onPress={() => navigation.navigate('PickupsTab', { studentId: child.id })}
                     activeOpacity={0.8}
                   >
                     <Ionicons name="car-outline" size={16} color={COLORS.white} />
@@ -179,7 +191,7 @@ export const HomeScreen = ({ navigation }) => {
       {/* Quick Action Grid */}
       <Text style={styles.sectionTitle}>System Operations & Shortcuts</Text>
       <View style={styles.gridRow}>
-        <TouchableOpacity 
+        {canSeeTab('StudentsTab') && <TouchableOpacity
           style={[styles.gridCard, { backgroundColor: '#eff6ff' }]} 
           onPress={() => navigation.navigate('StudentsTab')}
           activeOpacity={0.8}
@@ -189,9 +201,9 @@ export const HomeScreen = ({ navigation }) => {
           </View>
           <Text style={styles.gridCardTitle}>Student Registry</Text>
           <Text style={styles.gridCardSub}>View roster & details</Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
-        <TouchableOpacity 
+        {canSeeTab('PickupsTab') && <TouchableOpacity
           style={[styles.gridCard, { backgroundColor: '#f0fdf4' }]} 
           onPress={() => navigation.navigate('PickupsTab')}
           activeOpacity={0.8}
@@ -201,9 +213,9 @@ export const HomeScreen = ({ navigation }) => {
           </View>
           <Text style={styles.gridCardTitle}>Pickups & Gate</Text>
           <Text style={styles.gridCardSub}>Requests & PIN lookup</Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
-        <TouchableOpacity 
+        {canSeeTab('AttendanceTab') && <TouchableOpacity
           style={[styles.gridCard, { backgroundColor: '#fefce8' }]} 
           onPress={() => navigation.navigate('AttendanceTab')}
           activeOpacity={0.8}
@@ -213,9 +225,9 @@ export const HomeScreen = ({ navigation }) => {
           </View>
           <Text style={styles.gridCardTitle}>Daily Attendance</Text>
           <Text style={styles.gridCardSub}>Status & teacher notes</Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
-        <TouchableOpacity 
+        {canSeeTab('OperationsTab') && <TouchableOpacity
           style={[styles.gridCard, { backgroundColor: '#faf5ff' }]} 
           onPress={() => navigation.navigate('OperationsTab')}
           activeOpacity={0.8}
@@ -225,9 +237,9 @@ export const HomeScreen = ({ navigation }) => {
           </View>
           <Text style={styles.gridCardTitle}>Campus Ops</Text>
           <Text style={styles.gridCardSub}>Bus routes & PTA</Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
-        <TouchableOpacity 
+        {canSeeTab('SecurityTab') && <TouchableOpacity
           style={[styles.gridCard, { backgroundColor: '#fff1f2' }]} 
           onPress={() => navigation.navigate('SecurityTab')}
           activeOpacity={0.8}
@@ -237,7 +249,7 @@ export const HomeScreen = ({ navigation }) => {
           </View>
           <Text style={styles.gridCardTitle}>Security Hub</Text>
           <Text style={styles.gridCardSub}>Alerts & analytics</Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
         <TouchableOpacity 
           style={[styles.gridCard, { backgroundColor: '#f3f4f6' }]} 
@@ -275,11 +287,11 @@ export const HomeScreen = ({ navigation }) => {
       {/* Bulletins Preview Card */}
       <Card 
         title="School Bulletins & Announcements" 
-        headerRight={
+        headerRight={canSeeTab('OperationsTab') && (
           <TouchableOpacity onPress={() => navigation.navigate('OperationsTab')}>
             <Text style={{ fontSize: 12, fontWeight: '700', color: COLORS.safetyBlue }}>View All</Text>
           </TouchableOpacity>
-        }
+        )}
       >
         {announcements.length === 0 ? (
           <Text style={styles.emptyChildSub}>No announcements found.</Text>

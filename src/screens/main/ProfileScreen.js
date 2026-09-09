@@ -18,7 +18,6 @@ import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { firebaseConfig } from '../../config/firebase';
 import {
   subscribeIpBlocks,
   addIpBlockRecord,
@@ -75,7 +74,6 @@ export const ProfileScreen = () => {
     }
   }, [userProfile]);
 
-  // Live Firebase IP Firewall Subscription
   useEffect(() => {
     const unsubscribe = subscribeIpBlocks(setIpBlocks);
     return () => unsubscribe();
@@ -97,11 +95,11 @@ export const ProfileScreen = () => {
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-      Alert.alert('Firebase Updated', 'Your profile details and changes have been saved to Firebase Firestore!');
+      Alert.alert('Profile Updated', 'Your profile details and changes have been saved.');
     } catch (err) {
       Alert.alert(
         'Save Failed',
-        `${err.message || 'Could not update profile.'}${err.code ? `\n\nFirebase code: ${err.code}` : ''}`
+        err.message || 'Could not update profile.'
       );
     } finally {
       setLoading(false);
@@ -113,7 +111,7 @@ export const ProfileScreen = () => {
       setImageLoading(true);
       const updated = await uploadAvatar();
       if (updated) {
-        Alert.alert('Avatar Updated', 'Your new profile picture link has been saved to Firebase.');
+        Alert.alert('Avatar Updated', 'Your new profile picture has been saved.');
       }
     } catch (err) {
       Alert.alert('Upload Failed', err.message || 'Could not select photo.');
@@ -134,7 +132,7 @@ export const ProfileScreen = () => {
             try {
               setImageLoading(true);
               await resetAvatar();
-              Alert.alert('Avatar Reset', 'Profile picture reset to default logo on Firebase.');
+              Alert.alert('Avatar Reset', 'Profile picture reset to the default logo.');
             } catch (err) {
               Alert.alert('Error', err.message);
             } finally {
@@ -162,7 +160,7 @@ export const ProfileScreen = () => {
       await addIpBlockRecord(newBlock);
       setNewIpAddress('');
       setIpReason('');
-      Alert.alert('Saved to Firebase', `Address ${newBlock.ip} added to Firebase firewall rules.`);
+      Alert.alert('Rule Added', `Address ${newBlock.ip} added to the firewall rules.`);
     } catch (err) {
       Alert.alert('Error', err.message);
     }
@@ -171,14 +169,14 @@ export const ProfileScreen = () => {
   const handleRemoveIpBlock = async (id) => {
     try {
       await removeIpBlockRecord(id);
-      Alert.alert('Rule Removed', 'IP Block rule removed from Firebase.');
+      Alert.alert('Rule Removed', 'IP block rule removed.');
     } catch (err) {
       Alert.alert('Unable to remove rule', err.message || 'Please check your connection and try again.');
     }
   };
 
   const handleSubmitDataRequest = () => {
-    Alert.alert('Request Unavailable', 'No existing Firebase collection is configured for GDPR requests.');
+    Alert.alert('Request Unavailable', 'No data request service is configured yet.');
   };
 
   const handleOpenRoleModal = async () => {
@@ -199,7 +197,7 @@ export const ProfileScreen = () => {
       await updateUserRole(targetUid, newRole);
       const updatedList = await getAllUserProfiles();
       setUserList(updatedList);
-      Alert.alert('Role Updated', `User role updated to ${newRole.toUpperCase()} in Firebase Firestore.`);
+      Alert.alert('Role Updated', `User role updated to ${newRole.toUpperCase()}.`);
     } catch (err) {
       Alert.alert('Role Update Error', err.message);
     } finally {
@@ -231,7 +229,7 @@ export const ProfileScreen = () => {
       const sent = await sendVerificationEmail();
       Alert.alert(
         sent ? 'Verification Email Sent' : 'Email Already Verified',
-        sent ? 'Check your inbox and spam folder for the Firebase verification link.' : 'This account is already verified.'
+        sent ? 'Check your inbox and spam folder for the verification link.' : 'This account is already verified.'
       );
     } catch (err) {
       Alert.alert('Verification Email Failed', err.message || 'Unable to send the verification email.');
@@ -307,11 +305,11 @@ export const ProfileScreen = () => {
         </View>
 
         {/* Edit Profile Form */}
-        <Card title="Edit Profile Details (Firebase Sync)" subtitle="Linked to your authenticated user account in Firebase users/{uid}">
+        <Card title="Edit Profile Details">
           {saveSuccess && (
             <View style={styles.successBanner}>
               <Ionicons name="checkmark-circle" size={18} color={COLORS.success} style={{ marginRight: 6 }} />
-              <Text style={styles.successBannerText}>Profile saved to Firebase database!</Text>
+              <Text style={styles.successBannerText}>Profile saved successfully!</Text>
             </View>
           )}
 
@@ -343,7 +341,7 @@ export const ProfileScreen = () => {
           />
 
           <Button
-            title="Save Profile to Firebase"
+            title="Save Profile"
             onPress={handleSaveProfile}
             loading={loading}
             iconName="save-outline"
@@ -353,7 +351,7 @@ export const ProfileScreen = () => {
 
         {/* Admin Role Management (RBAC) */}
         {isAdmin && (
-          <Card title="Role-Based Access Control (Admin)" subtitle="Assign and manage user roles in Firebase database">
+          <Card title="Role-Based Access Control (Admin)" subtitle="Assign and manage user roles">
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Role Assignment:</Text>
               <Text style={styles.infoValue}>Admin Privilege Active</Text>
@@ -370,7 +368,7 @@ export const ProfileScreen = () => {
 
         {/* Network Security Controls (For Admins) */}
         {isAdmin && (
-          <Card title="Network Access & IP Controls (Firebase)" subtitle="Manage campus whitelists & firewall IP blocks">
+          <Card title="Network Access & IP Controls" subtitle="Manage campus whitelists & firewall IP blocks">
             <View style={styles.infoRow}>
               <Text style={styles.infoLabel}>Blocked IP Addresses:</Text>
               <Text style={styles.infoValue}>{ipBlocks.length} Active Rules</Text>
@@ -421,28 +419,6 @@ export const ProfileScreen = () => {
           </TouchableOpacity>
         </Card>
 
-        {/* System Information & UID Card */}
-        <Card title="Account Security & System Info">
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>User UID:</Text>
-            <Text style={styles.infoValue} numberOfLines={1}>{user?.uid || userProfile?.uid || 'N/A'}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Firebase Project:</Text>
-            <Text style={styles.infoValue} numberOfLines={1}>{firebaseConfig.projectId}</Text>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Account Status:</Text>
-            <View style={styles.activeTag}>
-              <Text style={styles.activeTagText}>Active Verified</Text>
-            </View>
-          </View>
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Session Type:</Text>
-            <Text style={styles.infoValue}>Persistent Firebase Auth</Text>
-          </View>
-        </Card>
-
         {/* Sign Out Button */}
         <Button
           title="Sign Out of Safe Child"
@@ -459,7 +435,7 @@ export const ProfileScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Network Firewall & IP Rules (Firebase)</Text>
+              <Text style={styles.modalTitle}>Network Firewall & IP Rules</Text>
               <TouchableOpacity onPress={() => setIpModalVisible(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
@@ -484,7 +460,7 @@ export const ProfileScreen = () => {
               />
 
               <Button
-                title="Add IP Block to Firebase"
+                title="Add IP Block"
                 onPress={handleAddIpBlock}
                 variant="danger"
                 iconName="shield-outline"
