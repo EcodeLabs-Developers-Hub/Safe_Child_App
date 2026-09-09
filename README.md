@@ -8,8 +8,14 @@
 **Safe Child** (also branded under Educal Complex) is a web application engineered for educational institutions, campus security teams, teachers, and parents. The platform bridges the gap between educational administration and child security by managing student rosters, automating secure multi-stage pickup verification, tracking daily attendance, reporting security incidents, managing network security policies, and maintaining immutable audit logging.
 
 ---
+## Install
+<img width="230" height="271" alt="image" src="https://github.com/user-attachments/assets/29806002-35f7-400b-89e1-5887c2f9ca0a" />
 
-## 📋 Table of Contents
+https://expo.dev/accounts/ecodelabs/projects/safe-child-app/builds/c74e286d-d59b-4090-9530-54045cda2294
+
+---
+
+##  Table of Contents
 
 - [Overview & Objectives](#-overview--objectives)
 - [Key Features & Capabilities](#-key-features--capabilities)
@@ -25,7 +31,7 @@
 
 ---
 
-## 🎯 Overview & Objectives
+## Overview & Objectives
 
 In modern educational environments, child safety during pickup hours, campus entry/exit, and emergency events is critical. **Safe Child** offers:
 
@@ -38,13 +44,13 @@ In modern educational environments, child safety during pickup hours, campus ent
 
 ## 🚀 Key Features & Capabilities
 
-### 1. 🎓 Student Registry & Roster Management
+### 1.  Student Registry & Roster Management
 - Register students with grade levels, guardian details, and teacher assignments.
 - Upload student profile photos (`assets/uploads/students/`).
 - Link multiple students to a single parent account.
 - Direct guardian communication from the registry with sent email persistence.
 
-### 2. 🚗 Multi-Stage Pickup Authorization & Verification
+### 2.  Multi-Stage Pickup Authorization & Verification
 - **Request Creation**: Parents schedule pickups, specifying recipient name, phone number, notes, pickup time/date, and upload photo proof (`assets/uploads/pickups/`). Multi-child selection is supported.
 - **Administrative Approval**: Admins review and approve pickup requests (`Pending` ➔ `Approved`).
 - **Campus Handover Verification**: Designated `pickup_verifier` staff verify recipient photo proof on campus gates, approving release (`Approved` ➔ `Verified` / `Released`).
@@ -56,7 +62,7 @@ In modern educational environments, child safety during pickup hours, campus ent
 - Attendance statuses: `Present`, `Absent`, `Late`.
 - Optional teacher notes for record keeping.
 
-### 4. 🚨 Security Dashboard & Incident Reporting
+### 4.  Security Dashboard & Incident Reporting
 - Log safety incidents and campus security alerts with severity levels (`Low`, `Medium`, `High`) and statuses (`Open`, `Acknowledged`, `Resolved`).
 - Map alerts to specific impacted students via junction table (`alerts_students`).
 - Security Analytics dashboard featuring visual metric cards, charts, and CSV data export capabilities.
