@@ -23,7 +23,7 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if signedIn() && (request.auth.uid == userId || isAdmin());
       allow create: if signedIn() && request.auth.uid == userId;
-      allow update: if isAdmin()
+      allow update: if (isAdmin() && (request.auth.uid != userId || request.resource.data.role == resource.data.role))
         || (signedIn()
           && request.auth.uid == userId
           && request.resource.data.role == resource.data.role);
@@ -80,6 +80,18 @@ service cloud.firestore {
 
     match /ip_blocks/{blockId} {
       allow read, write: if isAdmin();
+    }
+
+    match /reports/{reportId} {
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow create: if signedIn() && request.resource.data.createdByUserId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if false;
     }
 
     match /{document=**} {
