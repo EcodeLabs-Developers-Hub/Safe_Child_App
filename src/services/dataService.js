@@ -62,6 +62,9 @@ export const subscribeStudentsForUser = (callback, userProfile) => {
     callback([]);
     return () => {};
   }
+  if (userProfile?.role === 'teacher') {
+    return subscribeCollection('students', callback, [where('teacherEmail', '==', userProfile.email)]);
+  }
   if (userProfile?.role !== 'parent') return subscribeStudents(callback);
   return subscribeCollection('students', callback, [where('guardianEmail', '==', userProfile.email)]);
 };

@@ -5,11 +5,12 @@ import { deleteObject, getDownloadURL, listAll, ref, uploadBytes } from 'firebas
 import { Activity, AlertTriangle, BarChart3, Check, ChevronLeft, ChevronRight, FileImage, FolderOpen, LayoutDashboard, LogOut, Menu, Search, Shield, Users, X } from 'lucide-react';
 import { auth, db, storage } from './firebase';
 import { count, readPage, updateRecord, updateUser } from './services';
+import { ClassesManagement, StudentsManagement, UsersManagement } from './management';
 import type { AdminPage, RecordData, UserProfile } from './types';
 
 const pages: { id: AdminPage; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Overview', icon: LayoutDashboard }, { id: 'users', label: 'Users', icon: Users },
-  { id: 'children', label: 'Children', icon: Shield }, { id: 'pickups', label: 'Pickups', icon: Activity },
+  { id: 'children', label: 'Children', icon: Shield }, { id: 'classes', label: 'Classes', icon: Users }, { id: 'pickups', label: 'Pickups', icon: Activity },
   { id: 'reports', label: 'Reports', icon: AlertTriangle }, { id: 'files', label: 'Files', icon: FolderOpen }
 ];
 const roles = ['admin', 'teacher', 'parent', 'security', 'pickup_verifier'];
@@ -32,7 +33,7 @@ export function AdminApp() {
   if (authLoading) return <div className="center-page"><div className="loader" /></div>;
   if (!firebaseUser) return <Login />;
   if (profile?.role !== 'admin') return <Denied email={firebaseUser.email || ''} />;
-  return <Dashboard profile={profile} />;
+  return <AdminWorkspace profile={profile} />;
 }
 
 function Login() {
@@ -42,6 +43,14 @@ function Login() {
 }
 
 function Denied({ email }: { email: string }) { return <div className="center-page"><div className="denied"><Shield size={42} /><h2>Administrator access required</h2><p>{email} is authenticated but does not have the <b>admin</b> role.</p><button className="secondary" onClick={() => signOut(auth)}><LogOut size={16} /> Sign out</button></div></div>; }
+
+function AdminWorkspace({ profile }: { profile: UserProfile }) {
+  const [page, setPage] = useState<AdminPage>((location.pathname.split('/')[2] as AdminPage) || 'dashboard');
+  const [mobileNav, setMobileNav] = useState(false);
+  const navigate = (next: AdminPage) => { history.pushState({}, '', next === 'dashboard' ? '/admin' : `/admin/${next}`); setPage(next); setMobileNav(false); };
+  useEffect(() => { const onPop = () => setPage((location.pathname.split('/')[2] as AdminPage) || 'dashboard'); addEventListener('popstate', onPop); return () => removeEventListener('popstate', onPop); }, []);
+  return <div className="app-shell"><aside className={mobileNav ? 'sidebar open' : 'sidebar'}><div className="brand-line sidebar-brand"><span className="brand-mark small">SC</span><span>Safe Child</span><button className="icon-button close-nav" onClick={() => setMobileNav(false)}><X size={19} /></button></div><p className="nav-caption">Workspace</p><nav>{pages.map(({ id, label, icon: Icon }) => <button className={page === id ? 'nav-item active' : 'nav-item'} key={id} onClick={() => navigate(id)}><Icon size={18} />{label}</button>)}</nav><div className="sidebar-foot"><div className="avatar">{(profile.displayName || profile.email || 'A')[0].toUpperCase()}</div><div className="profile-mini"><b>{profile.displayName || 'Administrator'}</b><span>{profile.email}</span></div><button className="icon-button" title="Sign out" onClick={() => signOut(auth)}><LogOut size={17} /></button></div></aside>{mobileNav && <button className="scrim" onClick={() => setMobileNav(false)} aria-label="Close navigation" />}<main className="main"><header className="topbar"><button className="icon-button menu-button" onClick={() => setMobileNav(true)}><Menu size={21} /></button><div><p className="eyebrow">ADMIN CONSOLE</p><h1>{pages.find((item) => item.id === page)?.label}</h1></div><div className="topbar-right"><span className="live-dot">Live</span><span className="top-user">{profile.displayName || profile.email}</span></div></header>{page === 'dashboard' && <Home navigate={navigate} />}{page === 'users' && <UsersManagement />}{page === 'children' && <StudentsManagement />}{page === 'classes' && <ClassesManagement />}{page === 'pickups' && <CollectionPage name="pickup_requests" title="Pickup requests" subtitle="Pickup authorization and gate activity" columns={['studentName', 'pickupName', 'status', 'createdAt']} editable="pickup" />}{page === 'reports' && <CollectionPage name="reports" title="Reports" subtitle="Safety and compliance records" columns={['title', 'status', 'createdAt']} editable="report" />}{page === 'files' && <Files />}</main></div>;
+}
 
 function Dashboard({ profile }: { profile: UserProfile }) {
   const [page, setPage] = useState<AdminPage>((location.pathname.split('/')[2] as AdminPage) || 'dashboard'); const [mobileNav, setMobileNav] = useState(false);

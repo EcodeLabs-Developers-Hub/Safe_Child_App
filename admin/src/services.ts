@@ -1,5 +1,6 @@
-import { collection, doc, getCountFromServer, getDocs, limit, orderBy, query, startAfter, updateDoc, where, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, doc, getCountFromServer, getDocs, limit, orderBy, query, serverTimestamp, startAfter, updateDoc, where, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
 import { db } from './firebase';
+import { auth } from './firebase';
 import type { RecordData } from './types';
 
 export const readPage = async (name: string, pageSize: number, cursor?: QueryDocumentSnapshot<DocumentData>, search = '') => {
@@ -17,3 +18,6 @@ export const count = async (name: string, filters: { field: string; value: unkno
 
 export const updateUser = (uid: string, fields: Record<string, unknown>) => updateDoc(doc(db, 'users', uid), fields);
 export const updateRecord = (name: string, id: string, fields: Record<string, unknown>) => updateDoc(doc(db, name, id), fields);
+export const deleteUser = (uid: string) => deleteDoc(doc(db, 'users', uid));
+export const deleteRecord = (name: string, id: string) => deleteDoc(doc(db, name, id));
+export const createRecord = (name: string, fields: Record<string, unknown>) => addDoc(collection(db, name), { ...fields, ...(name === 'students' ? { createdByUid: auth.currentUser?.uid } : {}), createdAt: serverTimestamp() });

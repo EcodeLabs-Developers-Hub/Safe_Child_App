@@ -5,6 +5,7 @@ declare module 'lucide-react' {
   export const AlertTriangle: Icon;
   export const BarChart3: Icon;
   export const Check: Icon;
+  export const Edit3: Icon;
   export const ChevronLeft: Icon;
   export const ChevronRight: Icon;
   export const FileImage: Icon;
@@ -12,8 +13,11 @@ declare module 'lucide-react' {
   export const LayoutDashboard: Icon;
   export const LogOut: Icon;
   export const Menu: Icon;
+  export const Plus: Icon;
   export const Search: Icon;
   export const Shield: Icon;
+  export const Trash2: Icon;
   export const Users: Icon;
+  export const Upload: Icon;
   export const X: Icon;
 }
