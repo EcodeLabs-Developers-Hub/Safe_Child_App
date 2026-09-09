@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { addDoc, collection, onSnapshot, query, orderBy, type DocumentData } from 'firebase/firestore';
 import { Check, Edit3, Plus, Trash2, Upload, X } from 'lucide-react';
-import { db } from './firebase';
+import { auth, db } from './firebase';
 import { createRecord, deleteRecord, deleteUser, updateRecord, updateUser } from './services';
 import type { RecordData, Role } from './types';
 
@@ -81,6 +81,33 @@ export function ClassesManagement() {
   useEffect(() => onSnapshot(collection(db, 'classes'), (snapshot) => setClasses(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })))), []);
   useEffect(() => onSnapshot(collection(db, 'users'), (snapshot) => setTeachers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as RecordData)).filter((user) => user.role === 'teacher'))), []);
   return <ManagementLayout title="Grade Classes" subtitle="Create classes and assign teachers to manage their student groups."><div className="management-actions"><button className="primary" onClick={() => { setSelected(null); setOpen(true); }}><Plus size={16} /> Create grade class</button></div><section className="panel table-panel"><Table headers={['name', 'grade', 'teacherName', 'teacherEmail']} rows={classes} renderActions={(row) => <Actions onEdit={() => { setSelected(row); setOpen(true); }} onDelete={async () => { if (confirm(`Delete ${String(row.name || 'this class')}?`)) await deleteRecord('classes', row.id); }} />} />{open && <ClassModal record={selected || undefined} teachers={teachers} onClose={() => setOpen(false)} />}</section></ManagementLayout>;
+}
+
+export function ReportsManagement() {
+  const [reports, setReports] = useState<RecordData[]>([]);
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<RecordData | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => onSnapshot(query(collection(db, 'reports'), orderBy('createdAt', 'desc')), (snapshot) => setReports(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))), (e) => setError(e.message)), []);
+  const remove = async (report: RecordData) => {
+    if (!confirm(`Delete ${String(report.title || 'this report')}?`)) return;
+    try { await deleteRecord('reports', report.id); } catch (e) { setError(e instanceof Error ? e.message : 'Unable to delete report.'); }
+  };
+  return <ManagementLayout title="Reports" subtitle="Create, review, edit, and remove incident and safety reports."><div className="management-actions"><button className="primary" onClick={() => { setSelected(null); setOpen(true); }}><Plus size={16} /> Add report</button></div>{error && <div className="notice error">{error}</div>}<section className="panel table-panel"><Table headers={['reportType', 'title', 'status', 'createdAt']} rows={reports} renderActions={(row) => <Actions onEdit={() => { setSelected(row); setOpen(true); }} onDelete={() => remove(row)} />} />{open && <ReportModal record={selected || undefined} onClose={() => setOpen(false)} />}</section></ManagementLayout>;
+}
+function ReportModal({ record, onClose }: { record?: RecordData; onClose: () => void }) {
+  const [form, setForm] = useState({ reportType: String(record?.reportType || 'Incident'), title: String(record?.title || ''), content: String(record?.content || ''), status: String(record?.status || 'Draft') });
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    if (!form.title.trim() || !form.content.trim()) return;
+    setBusy(true);
+    try {
+      if (record) await updateRecord('reports', record.id, form);
+      else await createRecord('reports', { ...form, createdByUserId: auth.currentUser?.uid });
+      onClose();
+    } catch { setBusy(false); }
+  };
+  return <Modal title={record ? 'Edit report' : 'Add report'} onClose={onClose}><label>Report type<select value={form.reportType} onChange={(event) => setForm({ ...form, reportType: event.target.value })}><option>Incident</option><option>Safety Assessment</option><option>Arrival Review</option><option>Administrative</option></select></label><Field label="Title" value={form.title} onChange={(value) => setForm({ ...form, title: value })} /><label>Content<textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} rows={8} /></label><label>Status<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option>Draft</option><option>Reviewed</option><option>Resolved</option></select></label><SaveBar busy={busy} onCancel={onClose} onSave={save} /></Modal>;
 }
 function ClassModal({ record, teachers, onClose }: { record?: RecordData; teachers: RecordData[]; onClose: () => void }) { const [form, setForm] = useState({ name: String(record?.name || ''), grade: String(record?.grade || ''), teacherEmail: String(record?.teacherEmail || ''), teacherName: String(record?.teacherName || '') }); const [busy, setBusy] = useState(false); const save = async () => { setBusy(true); try { const teacher = teachers.find((item) => item.email === form.teacherEmail); const fields = { ...form, teacherName: teacher?.displayName || form.teacherName }; if (record) await updateRecord('classes', record.id, fields); else await createRecord('classes', fields); onClose(); } catch { setBusy(false); } }; return <Modal title={record ? 'Edit grade class' : 'Create grade class'} onClose={onClose}><Field label="Class name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} /><Field label="Grade" value={form.grade} onChange={(value) => setForm({ ...form, grade: value })} /><label>Teacher<select value={form.teacherEmail} onChange={(event) => setForm({ ...form, teacherEmail: event.target.value })}><option value="">Select teacher</option>{teachers.map((teacher) => <option key={teacher.id} value={String(teacher.email || '')}>{String(teacher.displayName || teacher.email)}</option>)}</select></label><SaveBar busy={busy} onCancel={onClose} onSave={save} /></Modal>; }
 

@@ -101,7 +101,7 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow update: if isAdmin();
       allow create: if signedIn() && request.resource.data.createdByUserId == request.auth.uid;
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /audit_logs/{logId} {
