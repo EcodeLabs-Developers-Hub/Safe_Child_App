@@ -7,7 +7,8 @@ import {
   query,
   serverTimestamp,
   updateDoc,
-  where
+  where,
+  getDocs
 } from 'firebase/firestore';
 import { auth } from '../config/firebase';
 import { db } from '../config/firebase';
@@ -65,6 +66,8 @@ export const subscribeStudentsForUser = (callback, userProfile) => {
   return subscribeCollection('students', callback, [where('guardianEmail', '==', userProfile.email)]);
 };
 export const addStudentRecord = (data) => addRecord('students', data);
+export const updateStudentRecord = (id, data) => updateRecord('students', id, data);
+export const deleteStudentRecord = async (id) => deleteDoc(doc(requireDatabase(), 'students', id));
 export const subscribePickups = (callback, userProfile) => {
   if (!userProfile) {
     callback([]);
@@ -104,7 +107,38 @@ export const subscribeAttendance = (callback, userProfile) => {
   if (userProfile?.role !== 'parent') return subscribeCollection('attendance', callback);
   return subscribeCollection('attendance', callback, [where('guardianEmail', '==', userProfile.email)]);
 };
-export const updateAttendanceRecord = (id, status, note = '') => updateRecord('attendance', id, { status, note });
+export const updateAttendanceRecord = async (student, status, note = '', attendanceDate) => {
+  const studentId = typeof student === 'string' ? student : student.id;
+  const date = attendanceDate || new Date().toISOString().slice(0, 10);
+  const attendanceId = `${studentId}_${date}`;
+  const database = requireDatabase();
+  await updateDoc(doc(database, 'attendance', attendanceId), {
+    studentId,
+    status,
+    note,
+    attendanceDate: date,
+    updatedAt: serverTimestamp()
+  }).catch(async (error) => {
+    if (error.code !== 'not-found') throw error;
+    await addDoc(collection(database, 'attendance'), {
+      studentId,
+      status,
+      note,
+      attendanceDate: date,
+      createdByUid: auth.currentUser.uid,
+      createdAt: serverTimestamp()
+    });
+  });
+};
+export const getAttendanceHistory = async (studentId, startDate, endDate) => {
+  const snapshot = await getDocs(query(
+    collection(requireDatabase(), 'attendance'),
+    where('studentId', '==', studentId),
+    where('attendanceDate', '>=', startDate),
+    where('attendanceDate', '<=', endDate)
+  ));
+  return snapshot.docs.map((item) => ({ id: item.id, ...item.data(), date: item.data().attendanceDate }));
+};
 export const subscribeAlerts = (callback) => subscribeCollection('alerts', callback);
 export const addAlertRecord = (data) => addRecord('alerts', data);
 export const updateAlertStatusRecord = (id, status) => updateRecord('alerts', id, { status });

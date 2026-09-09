@@ -18,7 +18,9 @@ import { Avatar } from '../../components/common/Avatar';
 import { COLORS, SPACING, RADIUS, SHADOWS } from '../../theme/theme';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { subscribeStudentsForUser, addStudentRecord, updateStudentRecord, getConnectedChildren } from '../../services/dataService';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import { subscribeStudentsForUser, addStudentRecord, updateStudentRecord, deleteStudentRecord, getConnectedChildren } from '../../services/dataService';
 
 const GRADES = ['All', 'My Children', 'Grade 1A', 'Grade 2A', 'Grade 3C', 'Grade 4B'];
 
@@ -43,6 +45,8 @@ export const StudentRegistryScreen = ({ navigation }) => {
   const [studentPhotoUri, setStudentPhotoUri] = useState(null);
   const [loading, setLoading] = useState(false);
   const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
+  const [editStudent, setEditStudent] = useState(null);
 
   // Detail Modal State
   const [selectedStudent, setSelectedStudent] = useState(null);
@@ -59,8 +63,113 @@ export const StudentRegistryScreen = ({ navigation }) => {
 
   const handleOpenStudentDetails = (student) => {
     setSelectedStudent(student);
+    setEditStudent({ ...student });
     setTeacherName(student.teacherName || '');
     setTeacherEmail(student.teacherEmail || '');
+  };
+
+  const handleSaveStudentDetails = async () => {
+    if (!editStudent || userRole !== 'admin') return;
+    if (!editStudent.firstName?.trim() || !editStudent.lastName?.trim() || !editStudent.guardianName?.trim()) {
+      Alert.alert('Required Fields', 'First name, last name, and guardian name are required.');
+      return;
+    }
+    try {
+      setAssignmentLoading(true);
+      const changes = {
+        firstName: editStudent.firstName.trim(),
+        lastName: editStudent.lastName.trim(),
+        grade: editStudent.grade?.trim() || 'Unassigned',
+        guardianName: editStudent.guardianName.trim(),
+        guardianEmail: editStudent.guardianEmail?.trim().toLowerCase() || '',
+        guardianPhone: editStudent.guardianPhone?.trim() || '',
+        emergencyContact: editStudent.emergencyContact?.trim() || editStudent.guardianPhone?.trim() || '',
+        teacherName: editStudent.teacherName?.trim() || '',
+        teacherEmail: editStudent.teacherEmail?.trim().toLowerCase() || ''
+      };
+      await updateStudentRecord(editStudent.id, changes);
+      setSelectedStudent((current) => ({ ...current, ...changes }));
+      setEditStudent((current) => ({ ...current, ...changes }));
+      Alert.alert('Student Updated', 'Student and parent details have been saved.');
+    } catch (err) {
+      Alert.alert('Unable to update student', err.message || 'Please check your connection and try again.');
+    } finally {
+      setAssignmentLoading(false);
+    }
+  };
+
+  const handleDeleteStudent = () => {
+    if (!selectedStudent || userRole !== 'admin') return;
+    Alert.alert('Delete Student', `Delete ${selectedStudent.firstName} ${selectedStudent.lastName}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => {
+        try {
+          await deleteStudentRecord(selectedStudent.id);
+          setSelectedStudent(null);
+          Alert.alert('Student Deleted', 'The student record has been removed.');
+        } catch (err) {
+          Alert.alert('Unable to delete student', err.message || 'Please check your connection and try again.');
+        }
+      } }
+    ]);
+  };
+
+  const parseCsvRow = (line) => {
+    const values = [];
+    let value = '';
+    let quoted = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const character = line[index];
+      if (character === '"' && line[index + 1] === '"') { value += '"'; index += 1; }
+      else if (character === '"') quoted = !quoted;
+      else if (character === ',' && !quoted) { values.push(value.trim()); value = ''; }
+      else value += character;
+    }
+    values.push(value.trim());
+    return values;
+  };
+
+  const handleImportStudentsCsv = async () => {
+    if (userRole !== 'admin') return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'text/csv', copyToCacheDirectory: true });
+      if (result.canceled) return;
+      setImportLoading(true);
+      const csv = await FileSystem.readAsStringAsync(result.assets[0].uri);
+      const lines = csv.split(/\r?\n/).filter((line) => line.trim());
+      if (lines.length < 2) throw new Error('CSV must include a header row and at least one student.');
+      const headers = parseCsvRow(lines[0]).map((header) => header.toLowerCase().replace(/[^a-z0-9]/g, ''));
+      const valueFor = (values, ...names) => {
+        const index = names.map((name) => headers.indexOf(name)).find((position) => position >= 0);
+        return index === undefined ? '' : values[index] || '';
+      };
+      let imported = 0;
+      for (const line of lines.slice(1)) {
+        const values = parseCsvRow(line);
+        const first = valueFor(values, 'firstname', 'studentfirstname', 'name');
+        const last = valueFor(values, 'lastname', 'studentlastname');
+        if (!first) continue;
+        await addStudentRecord({
+          firstName: first,
+          lastName: last || 'Imported',
+          grade: valueFor(values, 'grade', 'gradelevel') || 'Unassigned',
+          guardianName: valueFor(values, 'guardianname', 'parentname'),
+          guardianEmail: valueFor(values, 'guardianemail', 'parentemail').toLowerCase(),
+          guardianPhone: valueFor(values, 'guardianphone', 'parentphone'),
+          emergencyContact: valueFor(values, 'emergencycontact'),
+          teacherName: valueFor(values, 'teachername'),
+          teacherEmail: valueFor(values, 'teacheremail').toLowerCase(),
+          status: 'Active',
+          attendanceRate: '100%'
+        });
+        imported += 1;
+      }
+      Alert.alert('Import Complete', `${imported} student record${imported === 1 ? '' : 's'} imported. You can now edit additional details.`);
+    } catch (err) {
+      Alert.alert('CSV Import Failed', err.message || 'Unable to import this CSV file.');
+    } finally {
+      setImportLoading(false);
+    }
   };
 
   const handleCallGuardian = async () => {
@@ -233,6 +342,17 @@ export const StudentRegistryScreen = ({ navigation }) => {
             >
               <Ionicons name="person-add" size={18} color={COLORS.white} />
               <Text style={styles.addBtnText}>Add Student</Text>
+            </TouchableOpacity>
+          )}
+          {userRole === 'admin' && (
+            <TouchableOpacity
+              style={[styles.addBtn, { marginLeft: SPACING.xs }]}
+              onPress={handleImportStudentsCsv}
+              disabled={importLoading}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="document-attach-outline" size={18} color={COLORS.white} />
+              <Text style={styles.addBtnText}>{importLoading ? 'Importing...' : 'Import CSV'}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -503,26 +623,86 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 {userRole === 'admin' && (
                   <>
                     <InputField
-                      label="Reassign Teacher Name"
-                      value={teacherName}
-                      onChangeText={setTeacherName}
-                      placeholder="Teacher full name"
+                      label="First Name"
+                      value={editStudent?.firstName || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, firstName: value }))}
+                      placeholder="Student first name"
                       iconName="person-outline"
                     />
                     <InputField
-                      label="Reassign Teacher Email"
-                      value={teacherEmail}
-                      onChangeText={setTeacherEmail}
-                      placeholder="Email used to sign in"
+                      label="Last Name"
+                      value={editStudent?.lastName || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, lastName: value }))}
+                      placeholder="Student last name"
+                      iconName="person-outline"
+                    />
+                    <InputField
+                      label="Grade"
+                      value={editStudent?.grade || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, grade: value }))}
+                      placeholder="Grade level"
+                      iconName="school-outline"
+                    />
+                    <InputField
+                      label="Parent / Guardian Name"
+                      value={editStudent?.guardianName || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, guardianName: value }))}
+                      placeholder="Parent or guardian name"
+                      iconName="people-outline"
+                    />
+                    <InputField
+                      label="Parent / Guardian Email"
+                      value={editStudent?.guardianEmail || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, guardianEmail: value }))}
+                      placeholder="Parent email"
+                      iconName="mail-outline"
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                    />
+                    <InputField
+                      label="Parent / Guardian Phone"
+                      value={editStudent?.guardianPhone || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, guardianPhone: value }))}
+                      placeholder="Parent phone"
+                      iconName="call-outline"
+                      keyboardType="phone-pad"
+                    />
+                    <InputField
+                      label="Emergency Contact"
+                      value={editStudent?.emergencyContact || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, emergencyContact: value }))}
+                      placeholder="Emergency contact"
+                      iconName="alert-circle-outline"
+                      keyboardType="phone-pad"
+                    />
+                    <InputField
+                      label="Assigned Teacher"
+                      value={editStudent?.teacherName || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, teacherName: value }))}
+                      placeholder="Teacher full name"
+                      iconName="easel-outline"
+                    />
+                    <InputField
+                      label="Teacher Email"
+                      value={editStudent?.teacherEmail || ''}
+                      onChangeText={(value) => setEditStudent((current) => ({ ...current, teacherEmail: value }))}
+                      placeholder="Teacher email"
                       iconName="mail-outline"
                       keyboardType="email-address"
                       autoCapitalize="none"
                     />
                     <Button
-                      title="Save Teacher Assignment"
-                      onPress={handleSaveTeacherAssignment}
+                      title="Save Student & Parent Details"
+                      onPress={handleSaveStudentDetails}
                       loading={assignmentLoading}
                       iconName="save-outline"
+                      style={{ marginTop: SPACING.sm }}
+                    />
+                    <Button
+                      title="Delete Student"
+                      onPress={handleDeleteStudent}
+                      variant="danger"
+                      iconName="trash-outline"
                       style={{ marginTop: SPACING.sm }}
                     />
                   </>

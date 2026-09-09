@@ -17,7 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { subscribeAttendance, updateAttendanceRecord, getAttendanceHistory } from '../../services/dataService';
 import { useAuth } from '../../context/AuthContext';
 import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 
 const GRADES = ['All', 'Grade 1A', 'Grade 2A', 'Grade 3C', 'Grade 4B'];
@@ -41,7 +40,6 @@ export const AttendanceScreen = () => {
   const [roster, setRoster] = useState([]);
   const [selectedGrade, setSelectedGrade] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [saving, setSaving] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [exportStudent, setExportStudent] = useState(null);
@@ -95,10 +93,6 @@ export const AttendanceScreen = () => {
     }
   };
 
-  const handleSaveAttendance = () => {
-    Alert.alert('Attendance Saved', 'Attendance changes are saved to Firebase as you make them.');
-  };
-
   const escapeCsv = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 
   const downloadCsv = async (rows, filename) => {
@@ -120,7 +114,7 @@ export const AttendanceScreen = () => {
 
     const fileUri = `${FileSystem.documentDirectory}${filename}`;
     await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: FileSystem.EncodingType.UTF8 });
-    await Sharing.shareAsync(fileUri, { mimeType: 'text/csv', dialogTitle: 'Export attendance CSV' });
+    Alert.alert('Attendance Saved', `CSV saved to local device storage as ${filename}.`);
   };
 
   const exportPdf = async (rows, title) => {
@@ -138,7 +132,10 @@ export const AttendanceScreen = () => {
     }
 
     const result = await Print.printToFileAsync({ html });
-    await Sharing.shareAsync(result.uri, { mimeType: 'application/pdf', dialogTitle: 'Export attendance PDF' });
+    const filename = `attendance-${Date.now()}.pdf`;
+    const localUri = `${FileSystem.documentDirectory}${filename}`;
+    await FileSystem.copyAsync({ from: result.uri, to: localUri });
+    Alert.alert('Attendance Saved', `PDF saved to local device storage as ${filename}.`);
   };
 
   const handleExport = async (format, scope) => {
@@ -154,7 +151,13 @@ export const AttendanceScreen = () => {
           Alert.alert('Invalid export range', 'Select a student and enter dates as YYYY-MM-DD with the start date first.');
           return;
         }
-        rows = await getAttendanceHistory(exportStudent.studentId || exportStudent.id, exportStartDate, exportEndDate);
+        rows = (await getAttendanceHistory(exportStudent.studentId || exportStudent.id, exportStartDate, exportEndDate))
+          .map((row) => ({
+            ...row,
+            name: exportStudent.name,
+            grade: exportStudent.grade,
+            guardian: exportStudent.guardian
+          }));
         title = `${exportStudent.name} attendance (${exportStartDate} to ${exportEndDate})`;
       }
 
@@ -205,13 +208,6 @@ export const AttendanceScreen = () => {
             <Text style={styles.pageTitle}>Daily Attendance Roster</Text>
             <Text style={styles.pageSubtitle}>Assigned Class Roster • {formatDate(selectedDate)} (Firebase)</Text>
           </View>
-          <Button 
-            title="Save Log" 
-            onPress={handleSaveAttendance} 
-            loading={saving}
-            iconName="checkmark-done"
-            style={styles.saveBtn}
-          />
         </View>
 
         <Button

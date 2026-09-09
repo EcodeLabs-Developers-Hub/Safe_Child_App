@@ -271,17 +271,16 @@ export const PickupsScreen = ({ route }) => {
             <Text style={styles.pageTitle}>Child Pickup Verification</Text>
             <Text style={styles.pageSubtitle}>Firebase live gate verification & PIN security</Text>
           </View>
-          <TouchableOpacity 
-            style={styles.addBtn}
-            onPress={() => {
-              if (canArrangePickup) setModalVisible(true);
-              else Alert.alert('Pickup unavailable', 'Only parent accounts with connected children can arrange pickups.');
-            }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="add" size={20} color={COLORS.white} />
-            <Text style={styles.addBtnText}>New Request</Text>
-          </TouchableOpacity>
+          {canArrangePickup && (
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => setModalVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="add" size={20} color={COLORS.white} />
+              <Text style={styles.addBtnText}>New Request</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Navigation Mode Tabs */}
