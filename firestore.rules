@@ -61,6 +61,11 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /classes/{classId} {
+      allow read: if isStaff();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /pickup_requests/{requestId} {
       allow read: if isStaff() || (hasRole('parent') && resource.data.createdByUid == request.auth.uid);
       allow create: if hasRole('parent')
