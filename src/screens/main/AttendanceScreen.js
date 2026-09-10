@@ -70,24 +70,26 @@ export const AttendanceScreen = () => {
   const goToToday = () => setSelectedDate(new Date());
 
   const toggleStatus = async (student, newStatus) => {
-    const existing = roster.find(r => r.id === student.id);
+    if (userProfile?.role !== 'teacher' || student.status === newStatus) return;
+    const existing = roster.find(r => r.studentId === student.studentId);
     const note = existing ? (existing.note || '') : '';
     try {
-      await updateAttendanceRecord(student, newStatus, note, toDateKey(selectedDate));
+      await updateAttendanceRecord(student.studentId, newStatus, note, toDateKey(selectedDate));
     } catch (err) {
       Alert.alert('Unable to save attendance', err.message || 'Please check your connection and try again.');
     }
   };
 
   const handleOpenNoteModal = (student) => {
+    if (userProfile?.role !== 'teacher') return;
     setActiveNoteStudent(student);
     setNoteText(student.note || '');
   };
 
   const handleSaveNote = async () => {
-    if (userProfile?.role === 'parent') return;
+    if (userProfile?.role !== 'teacher') return;
     if (activeNoteStudent) {
-      await updateAttendanceRecord(activeNoteStudent, activeNoteStudent.status, noteText.trim(), toDateKey(selectedDate));
+      await updateAttendanceRecord(activeNoteStudent.studentId, activeNoteStudent.status, noteText.trim(), toDateKey(selectedDate));
       setActiveNoteStudent(null);
       setNoteText('');
       Alert.alert('Database Updated', 'Teacher note saved to Database.');
@@ -288,7 +290,7 @@ export const AttendanceScreen = () => {
                   <Text style={styles.studentName}>{student.name}</Text>
                   <Text style={styles.studentSub}>{student.grade} • Guardian: {student.guardian}</Text>
                 </View>
-                {userProfile?.role !== 'parent' && (
+                {userProfile?.role === 'teacher' && (
                   <TouchableOpacity
                     style={styles.noteIconBtn}
                     onPress={() => handleOpenNoteModal(student)}
@@ -309,7 +311,7 @@ export const AttendanceScreen = () => {
               ) : null}
 
               <View style={styles.statusButtonsRow}>
-                {userProfile?.role !== 'parent' && ['Present', 'Absent', 'Late'].map((st) => {
+                {userProfile?.role === 'teacher' && ['Present', 'Absent', 'Late'].map((st) => {
                   const active = student.status === st;
                   const badge = getBadgeStyle(st);
                   return (
@@ -363,7 +365,7 @@ export const AttendanceScreen = () => {
       </Modal>
 
       {/* Teacher Note Modal */}
-      <Modal visible={userProfile?.role !== 'parent' && !!activeNoteStudent} animationType="slide" transparent={true}>
+      <Modal visible={userProfile?.role === 'teacher' && !!activeNoteStudent} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>

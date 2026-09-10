@@ -6,6 +6,7 @@ import {
   onSnapshot,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   getDocs
@@ -102,36 +103,64 @@ export const subscribeAuthorizedContacts = (callback, userProfile) => {
   return subscribeCollection('authorized_contacts', callback, [where('createdByUid', '==', auth.currentUser.uid)]);
 };
 export const addAuthorizedContactRecord = (data) => addRecord('authorized_contacts', data);
-export const subscribeAttendance = (callback, userProfile) => {
+export const subscribeAttendance = (callback, userProfile, attendanceDate) => {
   if (!userProfile) {
     callback([]);
     return () => {};
   }
-  if (userProfile?.role !== 'parent') return subscribeCollection('attendance', callback);
-  return subscribeCollection('attendance', callback, [where('guardianEmail', '==', userProfile.email)]);
+  if (userProfile?.role === 'parent') {
+    callback([]);
+    return () => {};
+  }
+
+  let students = [];
+  let attendance = [];
+  const date = attendanceDate || new Date().toISOString().slice(0, 10);
+  const publish = () => {
+    const attendanceByStudent = new Map();
+    attendance.forEach((record) => {
+      if (record.studentId && !attendanceByStudent.has(record.studentId)) attendanceByStudent.set(record.studentId, record);
+    });
+    callback(students.map((student) => {
+      const record = attendanceByStudent.get(student.id);
+      return {
+        id: record?.id || `${student.id}_${date}`,
+        studentId: student.id,
+        name: `${student.firstName || ''} ${student.lastName || ''}`.trim() || 'Unnamed student',
+        grade: student.grade || 'Unassigned',
+        guardian: student.guardianName || 'No guardian details',
+        status: record?.status || '',
+        note: record?.note || '',
+        attendanceDate: date,
+        hasAttendanceRecord: Boolean(record)
+      };
+    }));
+  };
+  const studentFilters = userProfile?.role === 'teacher'
+    ? [where('teacherEmail', '==', userProfile.email)]
+    : [];
+  const unsubscribeStudents = subscribeCollection('students', (records) => { students = records; publish(); }, studentFilters);
+  const unsubscribeAttendance = subscribeCollection('attendance', (records) => { attendance = records; publish(); }, [where('attendanceDate', '==', date)]);
+  return () => { unsubscribeStudents(); unsubscribeAttendance(); };
 };
 export const updateAttendanceRecord = async (student, status, note = '', attendanceDate) => {
   const studentId = typeof student === 'string' ? student : student.id;
   const date = attendanceDate || new Date().toISOString().slice(0, 10);
   const attendanceId = `${studentId}_${date}`;
   const database = requireDatabase();
-  await updateDoc(doc(database, 'attendance', attendanceId), {
+  const fields = {
     studentId,
     status,
     note,
     attendanceDate: date,
     updatedAt: serverTimestamp()
-  }).catch(async (error) => {
-    if (error.code !== 'not-found') throw error;
-    await addDoc(collection(database, 'attendance'), {
-      studentId,
-      status,
-      note,
-      attendanceDate: date,
-      createdByUid: auth.currentUser.uid,
-      createdAt: serverTimestamp()
-    });
-  });
+  };
+  const existing = await getDocs(query(collection(database, 'attendance'), where('studentId', '==', studentId), where('attendanceDate', '==', date)));
+  if (existing.docs.length) {
+    await updateDoc(existing.docs[0].ref, fields);
+  } else {
+    await setDoc(doc(database, 'attendance', attendanceId), { ...fields, createdByUid: auth.currentUser.uid, createdAt: serverTimestamp() });
+  }
 };
 export const getAttendanceHistory = async (studentId, startDate, endDate) => {
   const snapshot = await getDocs(query(
