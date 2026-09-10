@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/firebase.ts","./src/lucide-react.d.ts","./src/main.tsx","./src/services.ts","./src/types.ts","./src/vite-env.d.ts"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/firebase.ts","./src/lucide-react.d.ts","./src/main.tsx","./src/management.tsx","./src/services.ts","./src/types.ts","./src/vite-env.d.ts"],"version":"5.9.3"}
