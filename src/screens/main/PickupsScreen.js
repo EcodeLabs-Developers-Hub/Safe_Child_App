@@ -165,9 +165,9 @@ export const PickupsScreen = ({ route }) => {
       setNotes('');
       setProofImageUri(null);
 
-      Alert.alert('Request Saved to Firebase', `Pickup authorization created. Verification PIN Code: ${savedRequest.pinCode}`);
+      Alert.alert('Request Saved to Database', `Pickup authorization created. Verification PIN Code: ${savedRequest.pinCode}`);
     } catch (err) {
-      Alert.alert('Error', err.message || 'Failed to save request to Firebase.');
+      Alert.alert('Error', err.message || 'Failed to save request to Database.');
     } finally {
       setLoading(false);
     }
@@ -195,7 +195,7 @@ export const PickupsScreen = ({ route }) => {
       setContactPhone('');
       setContactPhotoUri(null);
 
-      Alert.alert('Saved to Firebase', `${newContact.name} saved to Firebase pre-authorized contacts whitelist.`);
+      Alert.alert('Saved to Database', `${newContact.name} saved to Database pre-authorized contacts whitelist.`);
     } catch (err) {
       Alert.alert('Error', err.message);
     }
@@ -258,7 +258,7 @@ export const PickupsScreen = ({ route }) => {
       if (matchedRequest && matchedRequest.id === id) {
         setMatchedRequest({ ...matchedRequest, status: newStatus });
       }
-      Alert.alert('Firebase Updated', `Pickup request marked as ${newStatus}.`);
+      Alert.alert('Database Updated', `Pickup request marked as ${newStatus}.`);
     } catch (err) {
       Alert.alert('Unable to update request', err.message || 'Please check your connection and try again.');
     }
@@ -280,7 +280,7 @@ export const PickupsScreen = ({ route }) => {
         <View style={styles.topBar}>
           <View>
             <Text style={styles.pageTitle}>Child Pickup Verification</Text>
-            <Text style={styles.pageSubtitle}>Firebase live gate verification & PIN security</Text>
+            <Text style={styles.pageSubtitle}>Live gate verification & PIN security</Text>
           </View>
           {canArrangePickup && (
             <TouchableOpacity
@@ -502,7 +502,7 @@ export const PickupsScreen = ({ route }) => {
                   <Text style={styles.rejectedInstructionBody}>
                     DO NOT RELEASE STUDENT. ESCALATE CASE TO CAMPUS SECURITY COMMAND IMMEDIATELY.
                   </Text>
-                  <Text style={styles.rejectedMetaText}>Attempted PIN: {verificationResult.pin} • Incident Logged on Firebase Audit</Text>
+                  <Text style={styles.rejectedMetaText}>Attempted PIN: {verificationResult.pin} • Incident Logged on Audit</Text>
                 </View>
 
                 <View style={styles.actionRow}>
@@ -530,7 +530,7 @@ export const PickupsScreen = ({ route }) => {
         {/* TAB 3: PICKUP HISTORY AND VERIFICATION AUDIT RECORD (Figure 4.15) */}
         {activeTab === 'audit_log' && (
           <View>
-            <Card title="Pickup Verification Audit Records" subtitle="Complete auditable log of gate release attempts (Firebase Sync)">
+            <Card title="Pickup Verification Audit Records" subtitle="Complete auditable log of gate release attempts">
               {auditLogs.length === 0 ? (
                 <Text style={{ textAlign: 'center', color: COLORS.textMuted, padding: SPACING.md }}>No audit logs recorded yet.</Text>
               ) : (
@@ -591,7 +591,7 @@ export const PickupsScreen = ({ route }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>New Pickup Request (Firebase)</Text>
+              <Text style={styles.modalTitle}>New Pickup Request</Text>
               <TouchableOpacity onPress={() => setModalVisible(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>

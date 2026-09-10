@@ -267,12 +267,12 @@ export const StudentRegistryScreen = ({ navigation }) => {
       setTeacherEmail('');
       setStudentPhotoUri(null);
 
-      Alert.alert('Student Saved to Firebase', `${newStudentData.firstName} ${newStudentData.lastName} has been registered and connected to your profile.`);
+      Alert.alert('Student Saved to Database', `${newStudentData.firstName} ${newStudentData.lastName} has been registered and connected to your profile.`);
     } catch (err) {
       console.error('Student Firestore write failed:', err);
       Alert.alert(
         'Error Saving Student',
-        `${err.message || 'Could not save student to Firebase.'}${err.code ? `\n\nFirebase code: ${err.code}` : ''}`
+        `${err.message || 'Could not save student to Database.'}${err.code ? `\n\nDatabase code: ${err.code}` : ''}`
       );
     } finally {
       setLoading(false);
@@ -332,7 +332,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
         <View style={styles.topBar}>
           <View>
             <Text style={styles.pageTitle}>Student Registry</Text>
-            <Text style={styles.pageSubtitle}>Official Educal Complex student roster (Firebase Sync)</Text>
+            <Text style={styles.pageSubtitle}>Official Educal Complex student roster</Text>
           </View>
           {(userRole === 'admin' || userRole === 'teacher') && (
             <TouchableOpacity 
@@ -441,7 +441,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Register New Student (Firebase)</Text>
+              <Text style={styles.modalTitle}>Register New Student</Text>
               <TouchableOpacity onPress={() => setAddModalVisible(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
@@ -452,7 +452,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 label="First Name"
                 value={firstName}
                 onChangeText={setFirstName}
-                placeholder="e.g. Ethan"
+                placeholder="e.g. Kingsley"
                 iconName="person-outline"
               />
 
@@ -460,7 +460,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 label="Last Name"
                 value={lastName}
                 onChangeText={setLastName}
-                placeholder="e.g. Vance"
+                placeholder="e.g. Ofori"
                 iconName="person-outline"
               />
 
@@ -476,7 +476,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 label="Guardian Full Name"
                 value={guardianName}
                 onChangeText={setGuardianName}
-                placeholder="e.g. Eleanor Vance"
+                placeholder="e.g. Georgette Gyamfuaah"
                 iconName="people-outline"
               />
 
@@ -493,7 +493,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 label="Guardian Phone"
                 value={guardianPhone}
                 onChangeText={setGuardianPhone}
-                placeholder="e.g. +1 555-0182"
+                placeholder="e.g. +233 555-0182"
                 iconName="call-outline"
                 keyboardType="phone-pad"
               />
@@ -502,7 +502,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
                 label="Assigned Teacher"
                 value={teacherName}
                 onChangeText={setTeacherName}
-                placeholder="e.g. Mr. Joshua Ofori"
+                placeholder="e.g. Dr. Samuel O. Frimpong"
                 iconName="easel-outline"
               />
 
@@ -534,7 +534,7 @@ export const StudentRegistryScreen = ({ navigation }) => {
               </TouchableOpacity>
 
               <Button
-                title="Save Student to Firebase"
+                title="Save Student"
                 onPress={handleAddStudent}
                 loading={loading}
                 iconName="checkmark-circle-outline"

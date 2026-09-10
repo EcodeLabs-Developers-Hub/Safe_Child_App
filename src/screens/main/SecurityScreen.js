@@ -80,7 +80,7 @@ export const SecurityScreen = () => {
       setTitle('');
       setDescription('');
       setImpactedStudents('');
-      Alert.alert('Dispatched to Firebase', 'Security alert has been saved to Firebase Firestore.');
+      Alert.alert('Dispatched to Database', 'Security alert has been saved.');
     } catch (err) {
       Alert.alert('Error', err.message);
     } finally {
@@ -91,7 +91,7 @@ export const SecurityScreen = () => {
   const updateAlertStatus = async (id, newStatus) => {
     try {
       await updateAlertStatusRecord(id, newStatus);
-      Alert.alert('Firebase Updated', `Alert status changed to ${newStatus}.`);
+      Alert.alert('Database Updated', `Alert status changed to ${newStatus}.`);
     } catch (err) {
       Alert.alert('Unable to update alert', err.message || 'Please check your connection and try again.');
     }
@@ -132,7 +132,7 @@ export const SecurityScreen = () => {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.pageTitle}>Security Dashboard</Text>
-            <Text style={styles.pageSubtitle}>Firebase incident tracking & security analytics</Text>
+            <Text style={styles.pageSubtitle}>Incident tracking & security analytics</Text>
           </View>
           <TouchableOpacity 
             style={styles.alertBtn}
@@ -239,7 +239,7 @@ export const SecurityScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Report Security Incident (Firebase)</Text>
+              <Text style={styles.modalTitle}>Report Security Incident</Text>
               <TouchableOpacity onPress={() => setReportModalVisible(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
@@ -397,7 +397,7 @@ export const SecurityScreen = () => {
               </Card>
 
               {/* Returned Records Table */}
-              <Text style={styles.returnedHeaderTitle}>Returned Records (Firebase Firestore Live Audit)</Text>
+              <Text style={styles.returnedHeaderTitle}>Returned Records (Live Audit)</Text>
               
               {alerts.length === 0 && auditLogs.length === 0 ? (
                 <Text style={styles.emptyText}>No security records found.</Text>
@@ -410,7 +410,7 @@ export const SecurityScreen = () => {
                         <View style={[styles.reportTypeBadge, { backgroundColor: record.recordType === 'HANDOVER AUDIT' ? COLORS.successLight : COLORS.warningLight }]}>
                           <Text style={[styles.reportTypeBadgeText, { color: record.recordType === 'HANDOVER AUDIT' ? COLORS.success : COLORS.warning }]}>{record.recordType}</Text>
                         </View>
-                        <Text style={styles.reportRecordDate}>{record.timestamp || record.time || record.createdAt || 'Recorded in Firebase'}</Text>
+                        <Text style={styles.reportRecordDate}>{record.timestamp || record.time || record.createdAt || 'Recorded in Database'}</Text>
                       </View>
                       <Text style={styles.reportRecordTitle}>{record.title || 'Untitled record'}</Text>
                       <Text style={styles.reportRecordMeta}>{record.meta}</Text>

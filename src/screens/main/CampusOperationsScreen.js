@@ -88,7 +88,7 @@ export const CampusOperationsScreen = () => {
       setRouteNumber('');
       setDriverName('');
       setDriverPhone('');
-      Alert.alert('Saved to Firebase', `Bus route ${newRoute.routeNumber} saved to Firebase Firestore.`);
+      Alert.alert('Saved to Database', `Bus route ${newRoute.routeNumber} saved to Database Firestore.`);
     } catch (err) {
       Alert.alert('Error', err.message);
     }
@@ -115,7 +115,7 @@ export const CampusOperationsScreen = () => {
       setPtaDate('');
       setPtaLocation('');
       setPtaAgenda('');
-      Alert.alert('Saved to Firebase', `Meeting "${newMeeting.title}" broadcasted via Firebase Firestore.`);
+      Alert.alert('Saved to Database', `Meeting "${newMeeting.title}" broadcasted.`);
     } catch (err) {
       Alert.alert('Error', err.message);
     }
@@ -140,7 +140,7 @@ export const CampusOperationsScreen = () => {
       setAnnModalVisible(false);
       setAnnTitle('');
       setAnnBody('');
-      Alert.alert('Saved to Firebase', 'School announcement published to Firebase and active for all mobile users.');
+      Alert.alert('Saved to Database', 'School announcement published and active for all mobile users.');
     } catch (err) {
       Alert.alert('Publish Error', err.message);
     }
@@ -177,7 +177,7 @@ export const CampusOperationsScreen = () => {
         <View style={styles.topBar}>
           <View>
             <Text style={styles.pageTitle}>Campus Operations</Text>
-            <Text style={styles.pageSubtitle}>Firebase transportation, PTA schedules & bulletins</Text>
+            <Text style={styles.pageSubtitle}>Transportation, PTA schedules & bulletins</Text>
           </View>
         </View>
 
@@ -213,7 +213,7 @@ export const CampusOperationsScreen = () => {
           <View>
             {userRole === 'admin' && (
               <Button
-                title="Add New Bus Route (Firebase)"
+                title="Add New Bus Route"
                 onPress={() => setBusModalVisible(true)}
                 iconName="add-circle-outline"
                 style={{ marginBottom: SPACING.md }}
@@ -269,7 +269,7 @@ export const CampusOperationsScreen = () => {
           <View>
             {userRole === 'admin' && (
               <Button
-                title="Post New PTA Meeting (Firebase)"
+                title="Post New PTA Meeting"
                 onPress={() => setPtaModalVisible(true)}
                 iconName="calendar-number-outline"
                 style={{ marginBottom: SPACING.md }}
@@ -286,7 +286,7 @@ export const CampusOperationsScreen = () => {
                 <Text style={styles.agendaText}>{pta.agenda}</Text>
 
                 <View style={styles.rsvpRow}>
-                  <Text style={styles.rsvpLabel}>Your RSVP Status (Firebase Sync):</Text>
+                  <Text style={styles.rsvpLabel}>Your RSVP Status:</Text>
                   <View style={styles.rsvpBtnGroup}>
                     {['Going', 'Interested', 'Declined'].map((st) => (
                       <TouchableOpacity
@@ -343,7 +343,7 @@ export const CampusOperationsScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Bus Route Schedule (Firebase)</Text>
+              <Text style={styles.modalTitle}>Add Bus Route Schedule</Text>
               <TouchableOpacity onPress={() => setBusModalVisible(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
@@ -391,7 +391,7 @@ export const CampusOperationsScreen = () => {
             />
 
             <Button
-              title="Save Bus Schedule to Firebase"
+              title="Save Bus Schedule"
               onPress={handleAddBusRoute}
               iconName="checkmark-circle-outline"
               style={{ marginTop: SPACING.sm }}
@@ -405,7 +405,7 @@ export const CampusOperationsScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Post PTA Meeting (Firebase)</Text>
+              <Text style={styles.modalTitle}>Post PTA Meeting</Text>
               <TouchableOpacity onPress={() => setPtaModalVisible(false)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
@@ -446,7 +446,7 @@ export const CampusOperationsScreen = () => {
             />
 
             <Button
-              title="Broadcast PTA Schedule to Firebase"
+              title="Broadcast PTA Schedule"
               onPress={handleAddPtaMeeting}
               iconName="checkmark-circle-outline"
               style={{ marginTop: SPACING.sm }}

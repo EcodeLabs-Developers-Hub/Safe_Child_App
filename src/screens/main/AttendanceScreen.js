@@ -90,7 +90,7 @@ export const AttendanceScreen = () => {
       await updateAttendanceRecord(activeNoteStudent, activeNoteStudent.status, noteText.trim(), toDateKey(selectedDate));
       setActiveNoteStudent(null);
       setNoteText('');
-      Alert.alert('Firebase Updated', 'Teacher note saved to Firebase.');
+      Alert.alert('Database Updated', 'Teacher note saved to Database.');
     }
   };
 
@@ -207,7 +207,7 @@ export const AttendanceScreen = () => {
         <View style={styles.headerRow}>
           <View>
             <Text style={styles.pageTitle}>Daily Attendance Roster</Text>
-            <Text style={styles.pageSubtitle}>Assigned Class Roster • {formatDate(selectedDate)} (Firebase)</Text>
+            <Text style={styles.pageSubtitle}>Assigned Class Roster • {formatDate(selectedDate)} </Text>
           </View>
         </View>
 
@@ -278,7 +278,7 @@ export const AttendanceScreen = () => {
         </ScrollView>
 
         {/* Roster Table */}
-        <Card title="Attendance Register (Firebase Sync)">
+        <Card title="Attendance Register">
           {filteredRoster.length === 0 ? (
             <Text style={styles.emptyText}>No attendance records found.</Text>
           ) : filteredRoster.map((student) => (
@@ -367,7 +367,7 @@ export const AttendanceScreen = () => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Attendance Note (Firebase)</Text>
+              <Text style={styles.modalTitle}>Attendance Note</Text>
               <TouchableOpacity onPress={() => setActiveNoteStudent(null)}>
                 <Ionicons name="close" size={24} color={COLORS.textPrimary} />
               </TouchableOpacity>
@@ -388,7 +388,7 @@ export const AttendanceScreen = () => {
             />
 
             <Button
-              title="Save Note to Firebase"
+              title="Save Note to Database"
               onPress={handleSaveNote}
               iconName="checkmark"
               style={{ marginTop: SPACING.sm }}
